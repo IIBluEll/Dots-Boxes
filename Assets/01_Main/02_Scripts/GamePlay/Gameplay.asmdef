@@ -1,0 +1,16 @@
+{
+   "name": "DotsAndBoxes.Gameplay",
+    "rootNamespace": "DotsAndBoxes.Gameplay",
+    "references": [
+        "DotsAndBoxes.Shared"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,272 @@
+﻿using DotsAndBoxes.Shared;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace DotsAndBoxes.Gameplay
+{
+    public sealed class GameBoard_view : MonoBehaviour
+    {
+        [Header("Root"), SerializeField] private RectTransform _boardRootRectTrans;
+
+        [Space(5f), Header("Prefabs")]
+        [SerializeField] private Image _dotPrefabImg;
+        [SerializeField] private Image _boxPrefabImg;
+        [SerializeField] private BoardEdgeButton _edgePrefabBtn;
+
+        [Space(5f), Header("LayOut")]
+        [SerializeField] private float _dotSize = 28f;
+        [SerializeField] private float _edgeVisibleThickness = 12f;
+        [SerializeField] private float _edgeTouchThickness = 44f;
+        [SerializeField] private float _boxInset = 8f;
+
+        [Space(5f), Header("Colors")]
+        [SerializeField]
+        private Color _availableEdgeColor = new Color(0.31f, 0.31f, 0.31f, 1f);
+
+        [SerializeField]
+        private Color _localPreviewEdgeColor = new Color(0.15f, 0.85f, 1f, 1f);
+
+        private BoardEdgeButton[] _edgeButtons;
+        private Image[] _boxImages;
+
+        public IReadOnlyList<BoardEdgeButton> EdgeButtons => _edgeButtons;
+        public IReadOnlyList<Image> BoxImages => _boxImages;
+
+        public event Action<int> EdgeSelected;
+
+        private void Awake()
+        {
+            if ( !ValidateRefercences() )
+            {
+                enabled = false;
+                return;
+            }
+
+            BuildBoard();
+        }
+
+        private void OnDestroy()
+        {
+            if ( _edgeButtons == null )
+            {
+                return;
+            }
+
+            for ( int i = 0; i < _edgeButtons.Length; i++ )
+            {
+                if ( _edgeButtons[ i ] != null )
+                {
+                    _edgeButtons[ i ].EdgeSelected -= OnEdgeSelected;
+                }
+            }
+        }
+
+        public BoardEdgeButton GetEdgeButton(int edgeId)
+        {
+            if ( edgeId < 0 || edgeId >= BoardTopology.EDGE_COUNT )
+            {
+                throw new ArgumentOutOfRangeException(nameof(edgeId));
+            }
+
+            return _edgeButtons[ edgeId ];
+        }
+
+        public void ShowAllEdgesAvaliable()
+        {
+            for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
+            {
+                ShowAvailableEdge(edgeId);
+            }
+        }
+
+        public void ShowAvailableEdge(int edgeId)
+        {
+            BoardEdgeButton edgeBtn = GetEdgeButton(edgeId);
+            edgeBtn.SetVisual(_availableEdgeColor, true);
+        }
+
+        public void ShowLocalPreviewEdge(int edgeId)
+        {
+            BoardEdgeButton edgeBtn = GetEdgeButton(edgeId);
+            edgeBtn.SetVisual(_localPreviewEdgeColor, true);
+        }
+
+        private void BuildBoard()
+        {
+            _edgeButtons = new BoardEdgeButton[ BoardTopology.EDGE_COUNT ];
+
+            _boxImages = new Image[ BoardTopology.BOX_COUNT ];
+
+            BuildBoxes();
+            BuildEdges();
+            BuildDots();
+        }
+
+        private void BuildBoxes()
+        {
+            for ( int row = 0; row < BoardTopology.BOX_ROWS; row++ )
+            {
+                for ( int column = 0; column < BoardTopology.BOX_COLUMNS; column++ )
+                {
+                    int boxId = BoardTopology.GetBoxID(row, column);
+
+                    Image boxImg = Instantiate(_boxPrefabImg, _boardRootRectTrans, false);
+
+                    boxImg.name = $"boxImg_{boxId:00}";
+                    boxImg.raycastTarget = false;
+
+                    ConfigureBoxRect(boxImg.rectTransform , row , column);
+
+                    _boxImages[ boxId ] = boxImg;
+                }
+            }
+        }
+
+        private void BuildEdges()
+        {
+            for ( int row = 0; row < BoardTopology.DOT_ROWS; row++ )
+            {
+                for ( int column = 0; column < BoardTopology.BOX_COLUMNS; column++ )
+                {
+                    int edgeId = BoardTopology.GetHorizontalEdgeID(row, column);
+
+                    CreateEdge(edgeId , row , column , true);
+                }
+            }
+
+            for ( int row = 0; row < BoardTopology.BOX_ROWS; row++ )
+            {
+                for ( int column = 0; column < BoardTopology.DOT_COLUMNS; column++ )
+                {
+                    int edgeId = BoardTopology.GetVerticalEdgeID(row, column);
+
+                    CreateEdge(edgeId , row , column , false);
+                }
+            }
+        }
+
+        private void BuildDots()
+        {
+            for ( int row = 0; row < BoardTopology.DOT_ROWS; row++ )
+            {
+                for ( int column = 0; column < BoardTopology.DOT_COLUMNS; column++ )
+                {
+                    Image dotImg = Instantiate(_dotPrefabImg, _boardRootRectTrans, false);
+
+                    dotImg.name = $"dotImg_{row:00}_{column:00}";
+                    dotImg.raycastTarget = false;
+
+                    ConfigureDotRect(dotImg.rectTransform , row , column);
+                }
+            }
+        }
+
+        private void CreateEdge(int edgeId , int row , int column , bool isHorizontal)
+        {
+            BoardEdgeButton edgeBtn = Instantiate(_edgePrefabBtn, _boardRootRectTrans, false);
+
+            edgeBtn.Initialize(edgeId , isHorizontal , _edgeVisibleThickness);
+            edgeBtn.EdgeSelected += OnEdgeSelected;
+
+            if ( isHorizontal )
+            {
+                ConfigureHorizontalEdgeRect(edgeBtn.GetComponent<RectTransform>() , row , column);
+            }
+            else
+            {
+                ConfigureVerticalEdgeRect(edgeBtn.GetComponent<RectTransform>() , row , column);
+            }
+
+            _edgeButtons[ edgeId ] = edgeBtn;
+        }
+
+        private void ConfigureBoxRect(RectTransform boxRectTrans , int row , int column)
+        {
+            float minX = column / (float)BoardTopology.BOX_COLUMNS;
+            float maxX = (column + 1) / (float)BoardTopology.BOX_COLUMNS;
+
+            float minY = 1f - (row + 1) / (float)BoardTopology.BOX_ROWS;
+            float maxY = 1f - row / (float)BoardTopology.BOX_ROWS;
+
+            boxRectTrans.anchorMin = new Vector2(minX , minY);
+            boxRectTrans.anchorMax = new Vector2(maxX , maxY);
+
+            boxRectTrans.offsetMin = Vector2.one * _boxInset;
+            boxRectTrans.offsetMax = Vector2.one * -_boxInset;
+
+            ResetRectTransform(boxRectTrans);
+        }
+
+        private void ConfigureHorizontalEdgeRect(RectTransform edgeRectTrans , int row , int column)
+        {
+            float minX = column / (float)BoardTopology.BOX_COLUMNS;
+            float maxX = (column + 1) / (float)BoardTopology.BOX_COLUMNS;
+
+            float anchorY = 1f - row / (float)BoardTopology.BOX_ROWS;
+
+            edgeRectTrans.anchorMin = new Vector2(minX , anchorY);
+            edgeRectTrans.anchorMax = new Vector2(maxX , anchorY);
+            edgeRectTrans.offsetMin = new Vector2(_dotSize * 0.5f , -_edgeTouchThickness * 0.5f);
+            edgeRectTrans.offsetMax = new Vector2(-_dotSize * 0.5f , _edgeTouchThickness * 0.5f);
+
+            ResetRectTransform(edgeRectTrans);
+        }
+
+        private void ConfigureVerticalEdgeRect(RectTransform edgeRectTrans , int row , int column)
+        {
+            float anchorX = column / (float)BoardTopology.BOX_COLUMNS;
+
+            float minY = 1f - (row + 1) / (float)BoardTopology.BOX_ROWS;
+
+            float maxY = 1f - row / (float)BoardTopology.BOX_ROWS;
+
+            edgeRectTrans.anchorMin = new Vector2(anchorX , minY);
+            edgeRectTrans.anchorMax = new Vector2(anchorX , maxY);
+            edgeRectTrans.offsetMin = new Vector2(-_edgeTouchThickness * 0.5f , _dotSize * 0.5f);
+            edgeRectTrans.offsetMax = new Vector2(_edgeTouchThickness * 0.5f , -_dotSize * 0.5f);
+
+            ResetRectTransform(edgeRectTrans);
+        }
+
+        private void ConfigureDotRect(RectTransform dotRectTrans, int row, int column)
+        {
+            float anchorX = column / (float)BoardTopology.BOX_COLUMNS;
+            float anchorY = 1f - row / (float)BoardTopology.BOX_ROWS;
+
+            Vector2 anchor = new Vector2(anchorX, anchorY);
+
+            dotRectTrans.anchorMin = anchor;
+            dotRectTrans.anchorMax = anchor;
+            dotRectTrans.sizeDelta = new Vector2(_dotSize , _dotSize);
+            dotRectTrans.anchoredPosition = Vector2.zero;
+
+            ResetRectTransform(dotRectTrans);
+        }
+
+        private static void ResetRectTransform(RectTransform targetRectTrans)
+        {
+            targetRectTrans.pivot = new Vector2(0.5f , 0.5f);
+            targetRectTrans.localScale = Vector3.one;
+            targetRectTrans.localRotation = Quaternion.identity;
+        }
+
+        private void OnEdgeSelected(int edgeId)
+        {
+            EdgeSelected?.Invoke(edgeId);
+        }
+
+        private bool ValidateRefercences()
+        {
+            bool isValid = _boardRootRectTrans != null && _dotPrefabImg != null && _boxPrefabImg != null && _edgePrefabBtn != null;
+
+            if ( !isValid )
+            {
+                Debug.LogError("GameBoard_view의 참조가 설정되지 않았습니다." , this);
+            }
+
+            return isValid;
+        }
+    }
+}
