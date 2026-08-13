@@ -29,6 +29,15 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _availableEdgeColor = new Color(0.31f, 0.31f, 0.31f, 1f);
         [SerializeField] private Color _localPreviewEdgeColor = new Color(0.15f, 0.85f, 1f, 1f);
 
+        [Space(5f), Header("Buttons")]
+        [SerializeField] private Button _confirmBtn;
+
+        [Space(5f), Header("Player Colors")]
+        [SerializeField] private Color _playerOneEdgeColor = new Color(0.1f, 0.45f, 1f, 1f);
+        [SerializeField] private Color _playerTwoEdgeColor = new Color(1f, 0.4f, 0.1f, 1f);
+        [SerializeField] private Color _playerOneBoxColor = new Color(0.1f, 0.45f, 1f, 0.35f);
+        [SerializeField] private Color _playerTwoBoxColor = new Color(1f, 0.4f, 0.1f, 0.35f);
+
         private BoardEdgeButton[] _edgeButtons;
         private Image[] _boxImages;
 
@@ -36,6 +45,7 @@ namespace DotsAndBoxes.Gameplay
         public IReadOnlyList<Image> BoxImages => _boxImages;
 
         public event Action<int> EdgeSelected;
+        public event Action ConfirmRequested;
 
         private void Awake()
         {
@@ -46,6 +56,9 @@ namespace DotsAndBoxes.Gameplay
             }
 
             BuildBoard();
+
+            _confirmBtn.onClick.AddListener(OnConfirmButtonClicked);
+            SetConfirmInteractable(false);
         }
 
         private void OnDestroy()
@@ -53,6 +66,11 @@ namespace DotsAndBoxes.Gameplay
             if (_edgeButtons == null)
             {
                 return;
+            }
+
+            if ( _confirmBtn != null )
+            {
+                _confirmBtn.onClick.RemoveListener(OnConfirmButtonClicked);
             }
 
             for (int i = 0; i < _edgeButtons.Length; i++)
@@ -112,6 +130,28 @@ namespace DotsAndBoxes.Gameplay
             BuildBoxes();
             BuildEdges();
             BuildDots();
+        }
+
+        public void SetConfirmInteractable(bool isInteractable)
+        {
+            _confirmBtn.interactable = isInteractable;
+        }
+
+        public void ShowConfirmedEdge(int edgeId , PLAYER_INDEX_ENUM ownerPlayerIndex)
+        {
+            Color edgeColor = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneEdgeColor : _playerTwoEdgeColor;
+
+            GetEdgeButton(edgeId).SetVisual(edgeColor , false);
+        }
+
+        public void ShowOwnedBox(int boxId , PLAYER_INDEX_ENUM ownerPlayerIndex)
+        {
+            if ( boxId < 0 || boxId >= BoardTopology.BOX_COUNT )
+            {
+                throw new ArgumentOutOfRangeException(nameof(boxId));
+            }
+
+            _boxImages[ boxId ].color = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneBoxColor : _playerTwoBoxColor;
         }
 
         private void BuildBoxes()
@@ -253,6 +293,10 @@ namespace DotsAndBoxes.Gameplay
             targetRectTrans.localRotation = Quaternion.identity;
         }
 
+        private void OnConfirmButtonClicked()
+        {
+            ConfirmRequested?.Invoke();
+        }
         private void OnEdgeSelected(int edgeId)
         {
             EdgeSelected?.Invoke(edgeId);
@@ -260,7 +304,11 @@ namespace DotsAndBoxes.Gameplay
 
         private bool ValidateReferences()
         {
-            bool isValid = _boardRootRectTrans != null && _dotPrefabImg != null && _boxPrefabImg != null && _edgePrefabBtn != null;
+            bool isValid = _boardRootRectTrans != null &&
+                           _dotPrefabImg != null &&
+                           _boxPrefabImg != null &&
+                           _edgePrefabBtn != null &&
+                           _confirmBtn != null;
 
             if (!isValid)
             {

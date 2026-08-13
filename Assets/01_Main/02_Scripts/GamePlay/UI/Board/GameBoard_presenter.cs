@@ -1,5 +1,6 @@
 using System;
 using HM.CodeBase;
+using DotsAndBoxes.Shared;
 
 namespace DotsAndBoxes.Gameplay
 {
@@ -55,6 +56,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.EdgeSelected += OnEdgeSelected;
+            _view.ConfirmRequested += OnConfirmRequested;
+
             _isBound = true;
         }
 
@@ -66,6 +69,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.EdgeSelected -= OnEdgeSelected;
+            _view.ConfirmRequested -= OnConfirmRequested;
+
             _isBound = false;
         }
 
@@ -95,6 +100,27 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.ShowLocalPreviewEdge(edgeId);
+            _view.SetConfirmInteractable(true);
+        }
+
+        private void OnConfirmRequested()
+        {
+            PLAYER_INDEX_ENUM confirmingPlayerIndex = _model.Board.CurrentPlayerIndex;
+
+            if ( !_model.TryConfirmPreview(out MoveResult moveResult) )
+            {
+                return;
+            }
+
+            _view.ShowConfirmedEdge(moveResult.EdgeId , confirmingPlayerIndex);
+
+            for ( int i = 0; i < moveResult.CompletedBoxIds.Count; i++ )
+            {
+                int boxId = moveResult.CompletedBoxIds[i];
+                _view.ShowOwnedBox(boxId , confirmingPlayerIndex);
+            }
+
+            _view.SetConfirmInteractable(false);
         }
 
         private void ThrowIfDisposed()

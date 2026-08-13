@@ -37,6 +37,26 @@ namespace DotsAndBoxes.Gameplay
             return true;
         }
 
+        public bool TryConfirmPreview(out MoveResult moveResult)
+        {
+            moveResult = null;
+
+            if ( !HasPreview )
+            {
+                return false;
+            }
+
+            moveResult = DotsRule.TryConfirmEdge(Board , Board.CurrentPlayerIndex , PreviewEdgeId);
+
+            if ( !moveResult.IsValid )
+            {
+                return false;
+            }
+
+            ClearPreview();
+            return true;
+        }
+
         public void ClearPreview()
         {
             PreviewEdgeId = NO_PREVIEW_EDGE_ID;
