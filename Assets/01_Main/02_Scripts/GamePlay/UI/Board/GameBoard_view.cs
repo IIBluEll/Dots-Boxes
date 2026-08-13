@@ -1,7 +1,8 @@
-using System;
-using System.Collections.Generic;
 using DotsAndBoxes.Shared;
 using HM.CodeBase;
+using System;
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.UI;
@@ -37,6 +38,11 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _playerTwoEdgeColor = new Color(1f, 0.4f, 0.1f, 1f);
         [SerializeField] private Color _playerOneBoxColor = new Color(0.1f, 0.45f, 1f, 0.35f);
         [SerializeField] private Color _playerTwoBoxColor = new Color(1f, 0.4f, 0.1f, 0.35f);
+
+        [Space(5f), Header("Status")]
+        [SerializeField] private TMP_Text _playerOneScoreTxt;
+        [SerializeField] private TMP_Text _playerTwoScoreTxt;
+        [SerializeField] private TMP_Text _turnTxt;
 
         private BoardEdgeButton[] _edgeButtons;
         private Image[] _boxImages;
@@ -100,6 +106,20 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return _edgeButtons[edgeId];
+        }
+
+        public void ShowScores(int playerOneScore , int playerTwoScore)
+        {
+            _playerOneScoreTxt.text = $"PLAYER 1 : {playerOneScore}";
+            _playerTwoScoreTxt.text = $"PLAYER 2 : {playerTwoScore}";
+        }
+
+        public void ShowCurrentTurn(PLAYER_INDEX_ENUM currentPlayerIndex)
+        {
+            bool isPlayerOneTurn = currentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE;
+
+            _turnTxt.text = isPlayerOneTurn ? "PLAYER 1 TURN" : "PLAYER 2 TURN";
+            _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
         }
 
         public void ShowAllEdgesAvailable()
@@ -308,7 +328,10 @@ namespace DotsAndBoxes.Gameplay
                            _dotPrefabImg != null &&
                            _boxPrefabImg != null &&
                            _edgePrefabBtn != null &&
-                           _confirmBtn != null;
+                           _confirmBtn != null &&
+                           _playerOneScoreTxt != null &&
+                           _playerTwoScoreTxt != null &&
+                           _turnTxt != null;
 
             if (!isValid)
             {

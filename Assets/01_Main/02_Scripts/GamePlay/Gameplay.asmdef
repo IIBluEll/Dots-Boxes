@@ -3,7 +3,8 @@
     "rootNamespace": "DotsAndBoxes.Gameplay",
     "references": [
         "DotsAndBoxes.Shared",
-        "HM.codebase.Runtime"
+        "HM.codebase.Runtime",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

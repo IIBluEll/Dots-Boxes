@@ -78,10 +78,40 @@ namespace DotsAndBoxes.Gameplay
         {
             _view.ShowAllEdgesAvailable();
 
-            if (_model.HasPreview)
+            for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
+            {
+                EdgeData edge = _model.Board.GetEdge(edgeId);
+
+                if ( edge.IsConfirmed )
+                {
+                    _view.ShowConfirmedEdge(edgeId , edge.OwnerPlayerIndex);
+                }
+            }
+
+            for ( int boxId = 0; boxId < BoardTopology.BOX_COUNT; boxId++ )
+            {
+                BoxData box = _model.Board.GetBox(boxId);
+
+                if ( box.IsOwned )
+                {
+                    _view.ShowOwnedBox(boxId , box.OwnerPlayerIndex);
+                }
+            }
+
+            if ( _model.HasPreview )
             {
                 _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
             }
+
+            _view.SetConfirmInteractable(_model.HasPreview);
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            _view.ShowScores(_model.Board.PlayerOneScore , _model.Board.PlayerTwoScore);
+
+            _view.ShowCurrentTurn(_model.Board.CurrentPlayerIndex);
         }
 
         private void OnEdgeSelected(int edgeId)
@@ -121,6 +151,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.SetConfirmInteractable(false);
+            RefreshStatus();
         }
 
         private void ThrowIfDisposed()
