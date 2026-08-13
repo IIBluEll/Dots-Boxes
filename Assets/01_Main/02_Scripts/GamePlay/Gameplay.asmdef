@@ -2,7 +2,8 @@
    "name": "DotsAndBoxes.Gameplay",
     "rootNamespace": "DotsAndBoxes.Gameplay",
     "references": [
-        "DotsAndBoxes.Shared"
+        "DotsAndBoxes.Shared",
+        "HM.codebase.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

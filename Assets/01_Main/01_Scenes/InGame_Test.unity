@@ -129,7 +129,7 @@ GameObject:
   m_Component:
   - component: {fileID: 440844571}
   - component: {fileID: 440844573}
-  - component: {fileID: 440844572}
+  - component: {fileID: 440844574}
   m_Layer: 5
   m_Name: BoardRootRectTrans
   m_TagString: Untagged
@@ -156,26 +156,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &440844572
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 440844570}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e5aceaa6333f37b409b54e16dae13c9e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.GameBoard_view
-  _boardRootRectTrans: {fileID: 440844571}
-  _dotPrefabImg: {fileID: 3627134539893894981, guid: fa20c431eac82e2419debf9036392bf6, type: 3}
-  _boxPrefabImg: {fileID: 7600076307119563586, guid: 21ba6756f03385648b9ce3fe878a3c20, type: 3}
-  _edgePrefabBtn: {fileID: 2030718011168182613, guid: c1945e57f3c934048b1e20da97a64ca2, type: 3}
-  _dotSize: 28
-  _edgeVisibleThickness: 12
-  _edgeTouchThickness: 44
-  _boxInset: 8
 --- !u!114 &440844573
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -190,6 +170,28 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.AspectRatioFitter
   m_AspectMode: 3
   m_AspectRatio: 1
+--- !u!114 &440844574
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 440844570}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5aceaa6333f37b409b54e16dae13c9e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.GameBoard_View
+  _boardRootRectTrans: {fileID: 440844571}
+  _dotPrefabImg: {fileID: 3627134539893894981, guid: fa20c431eac82e2419debf9036392bf6, type: 3}
+  _boxPrefabImg: {fileID: 7600076307119563586, guid: 21ba6756f03385648b9ce3fe878a3c20, type: 3}
+  _edgePrefabBtn: {fileID: 2030718011168182613, guid: c1945e57f3c934048b1e20da97a64ca2, type: 3}
+  _dotSize: 28
+  _edgeVisibleThickness: 12
+  _edgeTouchThickness: 44
+  _boxInset: 8
+  _availableEdgeColor: {r: 0.31, g: 0.31, b: 0.31, a: 1}
+  _localPreviewEdgeColor: {r: 0.15, g: 0.85, b: 1, a: 1}
 --- !u!1 &912913870
 GameObject:
   m_ObjectHideFlags: 0
@@ -553,6 +555,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2104968506}
+  - component: {fileID: 2104968507}
   m_Layer: 5
   m_Name: GameRootRectTrans
   m_TagString: Untagged
@@ -580,6 +583,19 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &2104968507
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104968505}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7f3a9c1d2e54f68816a0c9b37e425ad, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.GameBoardUI
+  _gameBoardView: {fileID: 440844574}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

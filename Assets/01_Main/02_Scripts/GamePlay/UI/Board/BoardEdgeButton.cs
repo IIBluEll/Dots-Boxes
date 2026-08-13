@@ -4,11 +4,10 @@ using UnityEngine.UI;
 
 namespace DotsAndBoxes.Gameplay
 {
-    [RequireComponent(typeof(Button) , typeof(Image))]
+    [RequireComponent(typeof(Button), typeof(Image))]
     public sealed class BoardEdgeButton : MonoBehaviour
     {
         [SerializeField] private Button _edgeBtn;
-
         [SerializeField] private Image _visibleLineImg;
 
         public int EdgeId { get; private set; } = -1;
@@ -17,7 +16,7 @@ namespace DotsAndBoxes.Gameplay
 
         private void Awake()
         {
-            if(_edgeBtn == null)
+            if (_edgeBtn == null)
             {
                 _edgeBtn = GetComponent<Button>();
             }
@@ -27,7 +26,7 @@ namespace DotsAndBoxes.Gameplay
 
         private void OnDestroy()
         {
-            if(_edgeBtn != null)
+            if (_edgeBtn != null)
             {
                 _edgeBtn.onClick.RemoveListener(OnEdgeButtonClicked);
             }
@@ -37,8 +36,7 @@ namespace DotsAndBoxes.Gameplay
         {
             EdgeId = edgeId;
             gameObject.name = $"edgeBtn_{edgeId:00}";
-
-            ConfigureVisibleLine(isHorizontal , visibleThickness);
+            ConfigureVisibleLine(isHorizontal, visibleThickness);
         }
 
         public void SetVisual(Color visibleColor, bool isInteractable)
@@ -51,31 +49,28 @@ namespace DotsAndBoxes.Gameplay
         {
             RectTransform visibleLineRectTrans = _visibleLineImg.rectTransform;
 
-            visibleLineRectTrans.pivot = new Vector2(0.5f , 0.5f);
+            visibleLineRectTrans.pivot = new Vector2(0.5f, 0.5f);
             visibleLineRectTrans.localScale = Vector3.one;
             visibleLineRectTrans.localRotation = Quaternion.identity;
 
-            if(isHorizontal)
+            if (isHorizontal)
             {
-                visibleLineRectTrans.anchorMin = new Vector2(0f , 0.5f);
-                visibleLineRectTrans.anchorMax = new Vector2(1f , 0.5f);
-
-                visibleLineRectTrans.offsetMin = new Vector2(0f , -visibleThickness * 0.5f);
-                visibleLineRectTrans.offsetMax = new Vector2(0f , visibleThickness * 0.5f);
-
+                visibleLineRectTrans.anchorMin = new Vector2(0f, 0.5f);
+                visibleLineRectTrans.anchorMax = new Vector2(1f, 0.5f);
+                visibleLineRectTrans.offsetMin = new Vector2(0f, -visibleThickness * 0.5f);
+                visibleLineRectTrans.offsetMax = new Vector2(0f, visibleThickness * 0.5f);
                 return;
             }
 
-            visibleLineRectTrans.anchorMin = new Vector2(0.5f , 0f);
-            visibleLineRectTrans.anchorMax = new Vector2(0.5f , 1f);
-
+            visibleLineRectTrans.anchorMin = new Vector2(0.5f, 0f);
+            visibleLineRectTrans.anchorMax = new Vector2(0.5f, 1f);
             visibleLineRectTrans.offsetMin = new Vector2(-visibleThickness * 0.5f, 0f);
             visibleLineRectTrans.offsetMax = new Vector2(visibleThickness * 0.5f, 0f);
         }
 
         private void OnEdgeButtonClicked()
         {
-            if(EdgeId < 0)
+            if (EdgeId < 0)
             {
                 return;
             }

@@ -1,63 +1,108 @@
-﻿using UnityEngine;
+using System;
+using HM.CodeBase;
 
 namespace DotsAndBoxes.Gameplay
 {
-    public sealed class GameBoard_presenter : MonoBehaviour
+    public sealed class GameBoard_Presenter : APresenter
     {
-        [SerializeField] private GameBoard_view _view;
-        private GameBoard_model _model;
+        private readonly GameBoard_Model _model;
+        private readonly GameBoard_View _view;
 
-        private void Awake()
+        private bool _isBound;
+        private bool _isDisposed;
+
+        public GameBoard_Presenter(GameBoard_Model model, GameBoard_View view)
         {
-            if ( _view == null )
-            {
-                Debug.LogError("View 참조 안됨" , this);
+            _model = model ?? throw new ArgumentNullException(nameof(model));
+            _view = view ?? throw new ArgumentNullException(nameof(view));
+        }
 
-                enabled = false;
+        public override void Open()
+        {
+            ThrowIfDisposed();
+            BindEvents();
+
+            _view.Open();
+            RefreshView();
+        }
+
+        public override void Close()
+        {
+            if (_isDisposed)
+            {
                 return;
             }
 
-            _model = new GameBoard_model();
+            _view.Close();
         }
 
-        private void OnEnable()
+        public override void Dispose()
         {
-            if ( _view != null )
+            if (_isDisposed)
             {
-                _view.EdgeSelected += OnEdgeSelected;
+                return;
             }
+
+            UnbindEvents();
+            _isDisposed = true;
         }
 
-        private void Start()
+        private void BindEvents()
         {
-            _view.ShowAllEdgesAvaliable();
-        }
-
-        private void OnDisable()
-        {
-            if ( _view != null )
+            if (_isBound)
             {
-                _view.EdgeSelected -= OnEdgeSelected;
+                return;
+            }
+
+            _view.EdgeSelected += OnEdgeSelected;
+            _isBound = true;
+        }
+
+        private void UnbindEvents()
+        {
+            if (!_isBound)
+            {
+                return;
+            }
+
+            _view.EdgeSelected -= OnEdgeSelected;
+            _isBound = false;
+        }
+
+        private void RefreshView()
+        {
+            _view.ShowAllEdgesAvailable();
+
+            if (_model.HasPreview)
+            {
+                _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
             }
         }
 
         private void OnEdgeSelected(int edgeId)
         {
             int previousPreviewEdgeId = _model.PreviewEdgeId;
-
             bool isPreviewChanged = _model.TrySetPreviewEdge(edgeId);
 
-            if ( !isPreviewChanged )
+            if (!isPreviewChanged)
             {
                 return;
             }
 
-            if ( previousPreviewEdgeId != GameBoard_model.NO_PREVIEW_EDGE_ID && previousPreviewEdgeId != edgeId )
+            if (previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID && previousPreviewEdgeId != edgeId)
             {
                 _view.ShowAvailableEdge(previousPreviewEdgeId);
             }
 
             _view.ShowLocalPreviewEdge(edgeId);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(GameBoard_Presenter));
+            }
         }
     }
 }
