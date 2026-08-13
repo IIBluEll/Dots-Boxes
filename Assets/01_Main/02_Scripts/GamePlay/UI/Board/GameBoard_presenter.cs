@@ -1,6 +1,6 @@
-using System;
-using HM.CodeBase;
 using DotsAndBoxes.Shared;
+using HM.CodeBase;
+using System;
 
 namespace DotsAndBoxes.Gameplay
 {
@@ -12,7 +12,9 @@ namespace DotsAndBoxes.Gameplay
         private bool _isBound;
         private bool _isDisposed;
 
-        public GameBoard_Presenter(GameBoard_Model model, GameBoard_View view)
+        public event Action<GAME_RESULT_ENUM, int, int> GameFinished;
+
+        public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
         {
             _model = model ?? throw new ArgumentNullException(nameof(model));
             _view = view ?? throw new ArgumentNullException(nameof(view));
@@ -29,7 +31,7 @@ namespace DotsAndBoxes.Gameplay
 
         public override void Close()
         {
-            if (_isDisposed)
+            if ( _isDisposed )
             {
                 return;
             }
@@ -39,38 +41,37 @@ namespace DotsAndBoxes.Gameplay
 
         public override void Dispose()
         {
-            if (_isDisposed)
+            if ( _isDisposed )
             {
                 return;
             }
 
             UnbindEvents();
+            GameFinished = null;
             _isDisposed = true;
         }
 
         private void BindEvents()
         {
-            if (_isBound)
+            if ( _isBound )
             {
                 return;
             }
 
             _view.EdgeSelected += OnEdgeSelected;
             _view.ConfirmRequested += OnConfirmRequested;
-
             _isBound = true;
         }
 
         private void UnbindEvents()
         {
-            if (!_isBound)
+            if ( !_isBound )
             {
                 return;
             }
 
             _view.EdgeSelected -= OnEdgeSelected;
             _view.ConfirmRequested -= OnConfirmRequested;
-
             _isBound = false;
         }
 
@@ -105,12 +106,16 @@ namespace DotsAndBoxes.Gameplay
 
             _view.SetConfirmInteractable(_model.HasPreview);
             RefreshStatus();
+
+            if ( _model.Board.IsGameFinished )
+            {
+                _view.SetBoardInteractable(false);
+            }
         }
 
         private void RefreshStatus()
         {
             _view.ShowScores(_model.Board.PlayerOneScore , _model.Board.PlayerTwoScore);
-
             _view.ShowCurrentTurn(_model.Board.CurrentPlayerIndex);
         }
 
@@ -119,12 +124,12 @@ namespace DotsAndBoxes.Gameplay
             int previousPreviewEdgeId = _model.PreviewEdgeId;
             bool isPreviewChanged = _model.TrySetPreviewEdge(edgeId);
 
-            if (!isPreviewChanged)
+            if ( !isPreviewChanged )
             {
                 return;
             }
 
-            if (previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID && previousPreviewEdgeId != edgeId)
+            if ( previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID && previousPreviewEdgeId != edgeId )
             {
                 _view.ShowAvailableEdge(previousPreviewEdgeId);
             }
@@ -152,11 +157,23 @@ namespace DotsAndBoxes.Gameplay
 
             _view.SetConfirmInteractable(false);
             RefreshStatus();
+
+            if ( !moveResult.IsGameFinished )
+            {
+                return;
+            }
+
+            _view.SetBoardInteractable(false);
+
+            GameFinished?.Invoke(
+                _model.Board.GameResult ,
+                _model.Board.PlayerOneScore ,
+                _model.Board.PlayerTwoScore);
         }
 
         private void ThrowIfDisposed()
         {
-            if (_isDisposed)
+            if ( _isDisposed )
             {
                 throw new ObjectDisposedException(nameof(GameBoard_Presenter));
             }

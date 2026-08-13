@@ -28,6 +28,7 @@ namespace DotsAndBoxes.Gameplay
 
         [Space(5f), Header("Colors")]
         [SerializeField] private Color _availableEdgeColor = new Color(0.31f, 0.31f, 0.31f, 1f);
+        [SerializeField] private Color _availableBoxColor = new Color(0.55f, 0.55f, 0.55f, 0.56f);
         [SerializeField] private Color _localPreviewEdgeColor = new Color(0.15f, 0.85f, 1f, 1f);
 
         [Space(5f), Header("Buttons")]
@@ -90,12 +91,19 @@ namespace DotsAndBoxes.Gameplay
 
         public override void Clear()
         {
-            if (_edgeButtons == null)
+            if ( _edgeButtons == null || _boxImages == null )
             {
                 return;
             }
 
             ShowAllEdgesAvailable();
+
+            for ( int boxId = 0; boxId < _boxImages.Length; boxId++ )
+            {
+                _boxImages[ boxId ].color = _availableBoxColor;
+            }
+
+            SetConfirmInteractable(false);
         }
 
         public BoardEdgeButton GetEdgeButton(int edgeId)
@@ -157,6 +165,14 @@ namespace DotsAndBoxes.Gameplay
             _confirmBtn.interactable = isInteractable;
         }
 
+        public void SetBoardInteractable(bool isInteractable)
+        {
+            for ( int edgeId = 0; edgeId < _edgeButtons.Length; edgeId++ )
+            {
+                _edgeButtons[ edgeId ].SetInteractable(isInteractable);
+            }
+        }
+
         public void ShowConfirmedEdge(int edgeId , PLAYER_INDEX_ENUM ownerPlayerIndex)
         {
             Color edgeColor = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneEdgeColor : _playerTwoEdgeColor;
@@ -184,6 +200,7 @@ namespace DotsAndBoxes.Gameplay
                     Image boxImg = Instantiate(_boxPrefabImg, _boardRootRectTrans, false);
 
                     boxImg.name = $"boxImg_{boxId:00}";
+                    boxImg.color = _availableBoxColor;
                     boxImg.raycastTarget = false;
                     ConfigureBoxRect(boxImg.rectTransform, row, column);
 

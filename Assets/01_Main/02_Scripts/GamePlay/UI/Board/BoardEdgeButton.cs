@@ -45,6 +45,11 @@ namespace DotsAndBoxes.Gameplay
             _edgeBtn.interactable = isInteractable;
         }
 
+        public void SetInteractable(bool isInteractable)
+        {
+            _edgeBtn.interactable = isInteractable;
+        }
+
         private void ConfigureVisibleLine(bool isHorizontal, float visibleThickness)
         {
             RectTransform visibleLineRectTrans = _visibleLineImg.rectTransform;
