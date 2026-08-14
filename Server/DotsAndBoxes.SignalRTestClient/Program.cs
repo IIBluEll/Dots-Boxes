@@ -134,12 +134,125 @@ Ensure(
         PLAYER_INDEX_ENUM.PLAYER_ONE ,
     "RequestSync 결과에 Edge 상태가 반영되지 않았습니다.");
 
+ConfirmEdgeResponse retriedResponse =
+    await playerOneConnection.InvokeAsync<ConfirmEdgeResponse>(
+        "ConfirmEdge",
+        request);
+
+Ensure(
+    retriedResponse.IsAccepted ,
+    $"동일 RequestId 재전송이 거부됐습니다. Error: {retriedResponse.Error}");
+
+Ensure(
+    retriedResponse.RequestId == request.RequestId ,
+    "재전송 응답의 RequestId가 일치하지 않습니다.");
+
+Ensure(
+    retriedResponse.Snapshot != null &&
+    retriedResponse.Snapshot.Revision == 1 ,
+    "동일 요청 재전송 후 Revision이 변경됐습니다.");
+
+MatchSnapshot afterRetrySnapshot =
+    await playerTwoConnection.InvokeAsync<MatchSnapshot>(
+        "RequestSync",
+        developmentMatch.MatchId);
+
+int confirmedEdgeCount =
+    afterRetrySnapshot.EdgeOwners.Count(
+        owner => owner != PLAYER_INDEX_ENUM.NONE);
+
+Ensure(
+    afterRetrySnapshot.Revision == 1 ,
+    "동일 요청 재전송으로 Revision이 증가했습니다.");
+
+Ensure(
+    confirmedEdgeCount == 1 ,
+    "동일 요청 재전송으로 Edge가 추가 확정됐습니다.");
+
+ConfirmEdgeRequest conflictingRequest =
+    new ConfirmEdgeRequest
+    {
+        MatchId = developmentMatch.MatchId,
+        EdgeId = 1,
+        ExpectedRevision = 0,
+        RequestId = request.RequestId
+    };
+
+ConfirmEdgeResponse conflictingResponse =
+    await playerOneConnection.InvokeAsync<ConfirmEdgeResponse>(
+        "ConfirmEdge",
+        conflictingRequest);
+
+Ensure(
+    !conflictingResponse.IsAccepted ,
+    "변경된 내용으로 재사용한 RequestId가 승인됐습니다.");
+
+Ensure(
+    conflictingResponse.Error ==
+        MATCH_COMMAND_ERROR_ENUM.DUPLICATE_REQUEST_CONFLICT ,
+    $"예상하지 않은 충돌 오류입니다: {conflictingResponse.Error}");
+
+Ensure(
+    conflictingResponse.Snapshot != null &&
+    conflictingResponse.Snapshot.EdgeOwners[ 1 ] ==
+        PLAYER_INDEX_ENUM.NONE ,
+    "충돌 요청이 Edge 상태를 변경했습니다.");
+
+ConfirmEdgeRequest staleRevisionRequest =
+    new ConfirmEdgeRequest
+    {
+        MatchId = developmentMatch.MatchId,
+        EdgeId = 1,
+        ExpectedRevision = 0,
+        RequestId = Guid.NewGuid()
+    };
+
+ConfirmEdgeResponse staleRevisionResponse =
+    await playerTwoConnection.InvokeAsync<ConfirmEdgeResponse>(
+        "ConfirmEdge",
+        staleRevisionRequest);
+
+Ensure(
+    !staleRevisionResponse.IsAccepted ,
+    "오래된 Revision 요청이 승인됐습니다.");
+
+Ensure(
+    staleRevisionResponse.Error ==
+        MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH ,
+    $"예상하지 않은 Revision 오류입니다: {staleRevisionResponse.Error}");
+
+Ensure(
+    staleRevisionResponse.ShouldRequestSync ,
+    "Revision 불일치인데 Sync 요청 표시가 없습니다.");
+
+MatchSnapshot staleRevisionSnapshot =
+    staleRevisionResponse.Snapshot ??
+    throw new InvalidOperationException(
+        "Revision 불일치 응답에 최신 Snapshot이 없습니다.");
+
+Ensure(
+    staleRevisionSnapshot.Revision == 1 ,
+    "Revision 불일치 응답의 Snapshot Revision이 올바르지 않습니다.");
+
+MatchSnapshot recoveredSnapshot =
+    await playerTwoConnection.InvokeAsync<MatchSnapshot>(
+        "RequestSync",
+        developmentMatch.MatchId);
+
+Ensure(
+    recoveredSnapshot.Revision ==
+        staleRevisionSnapshot.Revision ,
+    "RequestSync 결과가 서버 최신 Revision과 일치하지 않습니다.");
+
 Console.WriteLine("SignalR 통합 검증 성공");
 Console.WriteLine($"MatchId: {developmentMatch.MatchId}");
 Console.WriteLine("Revision: 0 → 1");
 Console.WriteLine("Player 1 Broadcast 수신: 성공");
 Console.WriteLine("Player 2 Broadcast 수신: 성공");
 Console.WriteLine("Player 2 RequestSync 검증: 성공");
+Console.WriteLine("동일 RequestId 재전송 검증: 성공");
+Console.WriteLine("RequestId 충돌 거부 검증: 성공");
+Console.WriteLine("Revision 불일치 복구 검증: 성공");
 
 static HubConnection CreateConnection(
     string hubPath ,
