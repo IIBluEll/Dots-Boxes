@@ -13,6 +13,38 @@ WebApplication app = builder.Build();
 if ( app.Environment.IsDevelopment() )
 {
     app.UseMiddleware<DevelopmentUserSessionMiddleware>();
+
+    app.MapPost("/development/matches" , (MatchRoomProvider matchRoomProvider) =>
+    {
+        Guid playerOneUserId = Guid.NewGuid();
+        Guid playerTwoUserId = Guid.NewGuid();
+
+        MatchPlayer playerOne =
+            new MatchPlayer(playerOneUserId, "development-player-one");
+
+        MatchPlayer playerTwo =
+            new MatchPlayer(playerTwoUserId, "development-player-two");
+
+        MatchRoom matchRoom = new MatchRoom(
+            Guid.NewGuid(),
+            playerOne,
+            playerTwo,
+            PLAYER_INDEX_ENUM.PLAYER_ONE,
+            DateTimeOffset.UtcNow.AddSeconds(20));
+
+        if ( !matchRoomProvider.TryAdd(matchRoom) )
+        {
+            return Results.Conflict();
+        }
+
+        return Results.Ok(new
+        {
+            matchRoom.MatchId ,
+            PlayerOneUserId = playerOne.UserId ,
+            PlayerTwoUserId = playerTwo.UserId ,
+            HubPath = "/hubs/game"
+        });
+    });
 }
 
 app.MapGet("/health/live" , () =>
