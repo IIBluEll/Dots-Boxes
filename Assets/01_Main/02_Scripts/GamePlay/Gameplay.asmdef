@@ -1,0 +1,18 @@
+{
+   "name": "DotsAndBoxes.Gameplay",
+    "rootNamespace": "DotsAndBoxes.Gameplay",
+    "references": [
+        "DotsAndBoxes.Shared",
+        "HM.codebase.Runtime",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

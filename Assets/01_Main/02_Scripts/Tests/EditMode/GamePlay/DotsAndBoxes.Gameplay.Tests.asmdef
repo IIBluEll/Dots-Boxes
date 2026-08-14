@@ -1,0 +1,22 @@
+{
+    "name": "DotsAndBoxes.Gameplay.Tests",
+    "rootNamespace": "DotsAndBoxes.Gameplay.Tests",
+    "references": [
+        "DotsAndBoxes.Gameplay",
+        "DotsAndBoxes.Shared"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

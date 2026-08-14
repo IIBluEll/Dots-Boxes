@@ -104,3 +104,10 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Server .NET projects
+!/Server/**/*.csproj
+!/Server/**/*.sln
+!/Server/**/*.slnx
+/Server/**/[Bb]in/
+/Server/**/[Oo]bj/
