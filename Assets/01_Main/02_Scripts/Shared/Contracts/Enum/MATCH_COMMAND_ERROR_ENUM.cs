@@ -14,6 +14,7 @@
         DUPLICATE_REQUEST_CONFLICT = 9,
         RATE_LIMITED = 10,
         RECONNECT_REQUIRED = 11,
-        INTERNAL_ERROR = 12
+        INTERNAL_ERROR = 12,
+        INVALID_REQUEST = 13
     }
 }

@@ -1,6 +1,6 @@
 ﻿namespace DotsAndBoxes.Server.Matches
 {
-    public class MatchPlayer
+    public sealed class MatchPlayer
     {
         public Guid UserId { get; }
       
@@ -15,7 +15,7 @@
                 throw new ArgumentException("UserId는 Guid.Empty일 수 없습니다." , nameof(userId));
             }
 
-            ValidateConnectionID(connectionId);
+            ValidateConnectionId(connectionId);
 
             UserId = userId;
             ConnectionId = connectionId;
@@ -23,7 +23,7 @@
 
         public void Connect(string connectionId)
         {
-            ValidateConnectionID(connectionId);
+            ValidateConnectionId(connectionId);
             ConnectionId = connectionId;
         }
 
@@ -32,7 +32,7 @@
             ConnectionId = null;
         }
 
-        private static void ValidateConnectionID(string connectionId)
+        private static void ValidateConnectionId(string connectionId)
         {
             if(string.IsNullOrWhiteSpace(connectionId))
             {
