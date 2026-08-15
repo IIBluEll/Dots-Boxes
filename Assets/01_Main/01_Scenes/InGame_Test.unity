@@ -1946,6 +1946,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.GameBoardUI
   _gameBoardView: {fileID: 440844574}
   _resultUI: {fileID: 2104968508}
+  _useOnlineSession: 1
+  _serverUrl: http://localhost:5049
+  _matchId: fabf9e52-54c1-4489-852d-7726e87ecfed
+  _userId: 996509c2-84f7-4f22-9998-55ebd9c86e71
 --- !u!114 &2104968508
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -11,13 +11,13 @@ namespace DotsAndBoxes.Gameplay
 
         Guid MatchId { get; }
         PLAYER_INDEX_ENUM LocalPlayerIndex { get; }
+        bool CanConfirmCurrentTurn { get; }
 
         bool HasSnapshot { get; }
-
         MatchSnapshot CurrentSnapshot { get; }
 
-        Task Start_async(CancellationToken cancellationToken =  default);
-        Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId, CancellationToken cancellationToken = default);
+        Task Start_async(CancellationToken cancellationToken = default);
+        Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default);
         Task<MatchSnapshot> RequestSync_async(CancellationToken cancellationToken = default);
     }
 }

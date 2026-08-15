@@ -1,6 +1,7 @@
 using DotsAndBoxes.Shared;
 using HM.CodeBase;
 using System;
+using System.Threading.Tasks;
 
 namespace DotsAndBoxes.Gameplay
 {
@@ -8,16 +9,26 @@ namespace DotsAndBoxes.Gameplay
     {
         private readonly GameBoard_Model _model;
         private readonly GameBoard_View _view;
+        private readonly IGameSession _session;
 
         private bool _isBound;
         private bool _isDisposed;
+        private bool _isOpen;
+        private bool _isConfirming;
 
         public event Action<GAME_RESULT_ENUM, int, int> GameFinished;
+        public event Action<Exception> SessionFailed;
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
+            : this(model , view , null)
+        {
+        }
+
+        public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view , IGameSession session)
         {
             _model = model ?? throw new ArgumentNullException(nameof(model));
             _view = view ?? throw new ArgumentNullException(nameof(view));
+            _session = session;
         }
 
         public override void Open()
@@ -25,7 +36,14 @@ namespace DotsAndBoxes.Gameplay
             ThrowIfDisposed();
             BindEvents();
 
+            _isOpen = true;
             _view.Open();
+
+            if ( _session != null && _session.HasSnapshot )
+            {
+                _model.ApplySnapshot(_session.CurrentSnapshot);
+            }
+
             RefreshView();
         }
 
@@ -36,6 +54,7 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
+            _isOpen = false;
             _view.Close();
         }
 
@@ -47,8 +66,39 @@ namespace DotsAndBoxes.Gameplay
             }
 
             UnbindEvents();
+
             GameFinished = null;
+            SessionFailed = null;
+
+            _isConfirming = false;
+            _isOpen = false;
             _isDisposed = true;
+        }
+
+        public bool ApplySnapshot(MatchSnapshot snapshot)
+        {
+            ThrowIfDisposed();
+
+            bool isApplied = _model.ApplySnapshot(snapshot);
+
+            if ( !isApplied )
+            {
+                return false;
+            }
+
+            if ( !_isOpen )
+            {
+                return true;
+            }
+
+            RefreshView();
+
+            if ( _model.IsGameFinished )
+            {
+                NotifyGameFinished();
+            }
+
+            return true;
         }
 
         private void BindEvents()
@@ -60,6 +110,12 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected += OnEdgeSelected;
             _view.ConfirmRequested += OnConfirmRequested;
+
+            if ( _session != null )
+            {
+                _session.SnapshotChanged += OnSnapshotChanged;
+            }
+
             _isBound = true;
         }
 
@@ -72,30 +128,38 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected -= OnEdgeSelected;
             _view.ConfirmRequested -= OnConfirmRequested;
+
+            if ( _session != null )
+            {
+                _session.SnapshotChanged -= OnSnapshotChanged;
+            }
+
             _isBound = false;
         }
 
         private void RefreshView()
         {
+            bool canInteractWithBoard = CanInteractWithBoard();
+
             _view.ShowAllEdgesAvailable();
 
             for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
             {
-                EdgeData edge = _model.Board.GetEdge(edgeId);
+                PLAYER_INDEX_ENUM ownerPlayerIndex = _model.GetEdgeOwner(edgeId);
 
-                if ( edge.IsConfirmed )
+                if ( ownerPlayerIndex != PLAYER_INDEX_ENUM.NONE )
                 {
-                    _view.ShowConfirmedEdge(edgeId , edge.OwnerPlayerIndex);
+                    _view.ShowConfirmedEdge(edgeId , ownerPlayerIndex);
                 }
             }
 
             for ( int boxId = 0; boxId < BoardTopology.BOX_COUNT; boxId++ )
             {
-                BoxData box = _model.Board.GetBox(boxId);
+                PLAYER_INDEX_ENUM ownerPlayerIndex = _model.GetBoxOwner(boxId);
 
-                if ( box.IsOwned )
+                if ( ownerPlayerIndex != PLAYER_INDEX_ENUM.NONE )
                 {
-                    _view.ShowOwnedBox(boxId , box.OwnerPlayerIndex);
+                    _view.ShowOwnedBox(boxId , ownerPlayerIndex);
                 }
             }
 
@@ -104,23 +168,43 @@ namespace DotsAndBoxes.Gameplay
                 _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
             }
 
-            _view.SetConfirmInteractable(_model.HasPreview);
-            RefreshStatus();
-
-            if ( _model.Board.IsGameFinished )
+            if ( !canInteractWithBoard )
             {
                 _view.SetBoardInteractable(false);
             }
+
+            _view.SetConfirmInteractable(_model.HasPreview && canInteractWithBoard);
+            RefreshStatus();
         }
 
         private void RefreshStatus()
         {
-            _view.ShowScores(_model.Board.PlayerOneScore , _model.Board.PlayerTwoScore);
-            _view.ShowCurrentTurn(_model.Board.CurrentPlayerIndex);
+            _view.ShowScores(_model.PlayerOneScore , _model.PlayerTwoScore);
+            _view.ShowCurrentTurn(_model.CurrentPlayerIndex);
+        }
+
+        private bool CanInteractWithBoard()
+        {
+            if ( !_model.CanSelectEdge || _isConfirming )
+            {
+                return false;
+            }
+
+            if ( _session == null )
+            {
+                return true;
+            }
+
+            return _session.CanConfirmCurrentTurn;
         }
 
         private void OnEdgeSelected(int edgeId)
         {
+            if ( !CanInteractWithBoard() )
+            {
+                return;
+            }
+
             int previousPreviewEdgeId = _model.PreviewEdgeId;
             bool isPreviewChanged = _model.TrySetPreviewEdge(edgeId);
 
@@ -129,7 +213,8 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            if ( previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID && previousPreviewEdgeId != edgeId )
+            if ( previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID &&
+                previousPreviewEdgeId != edgeId )
             {
                 _view.ShowAvailableEdge(previousPreviewEdgeId);
             }
@@ -138,9 +223,25 @@ namespace DotsAndBoxes.Gameplay
             _view.SetConfirmInteractable(true);
         }
 
-        private void OnConfirmRequested()
+        private async void OnConfirmRequested()
         {
-            PLAYER_INDEX_ENUM confirmingPlayerIndex = _model.Board.CurrentPlayerIndex;
+            if ( _session == null )
+            {
+                ConfirmLocalPreview();
+                return;
+            }
+
+            await ConfirmOnlinePreview_async();
+        }
+
+        private void OnSnapshotChanged(MatchSnapshot snapshot)
+        {
+            ApplySnapshot(snapshot);
+        }
+
+        private void ConfirmLocalPreview()
+        {
+            PLAYER_INDEX_ENUM confirmingPlayerIndex = _model.CurrentPlayerIndex;
 
             if ( !_model.TryConfirmPreview(out MoveResult moveResult) )
             {
@@ -164,11 +265,47 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.SetBoardInteractable(false);
+            NotifyGameFinished();
+        }
 
-            GameFinished?.Invoke(
-                _model.Board.GameResult ,
-                _model.Board.PlayerOneScore ,
-                _model.Board.PlayerTwoScore);
+        private async Task ConfirmOnlinePreview_async()
+        {
+            if ( _isConfirming || !_model.HasPreview || !_session.CanConfirmCurrentTurn )
+            {
+                return;
+            }
+
+            int previewEdgeId = _model.PreviewEdgeId;
+
+            _isConfirming = true;
+            _view.SetConfirmInteractable(false);
+            _view.SetBoardInteractable(false);
+
+            try
+            {
+                await _session.ConfirmEdge_async(previewEdgeId);
+            }
+            catch ( Exception exception )
+            {
+                if ( !_isDisposed )
+                {
+                    SessionFailed?.Invoke(exception);
+                }
+            }
+            finally
+            {
+                _isConfirming = false;
+
+                if ( _isOpen && !_isDisposed )
+                {
+                    RefreshView();
+                }
+            }
+        }
+
+        private void NotifyGameFinished()
+        {
+            GameFinished?.Invoke(_model.GameResult , _model.PlayerOneScore , _model.PlayerTwoScore);
         }
 
         private void ThrowIfDisposed()
