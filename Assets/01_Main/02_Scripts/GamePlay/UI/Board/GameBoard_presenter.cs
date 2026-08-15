@@ -38,6 +38,7 @@ namespace DotsAndBoxes.Gameplay
 
             _isOpen = true;
             _view.Open();
+            RefreshConnectionState();
 
             if ( _session != null && _session.HasSnapshot )
             {
@@ -114,6 +115,7 @@ namespace DotsAndBoxes.Gameplay
             if ( _session != null )
             {
                 _session.SnapshotChanged += OnSnapshotChanged;
+                _session.ConnectionStateChanged += OnConnectionStateChanged;
             }
 
             _isBound = true;
@@ -132,6 +134,7 @@ namespace DotsAndBoxes.Gameplay
             if ( _session != null )
             {
                 _session.SnapshotChanged -= OnSnapshotChanged;
+                _session.ConnectionStateChanged -= OnConnectionStateChanged;
             }
 
             _isBound = false;
@@ -181,6 +184,18 @@ namespace DotsAndBoxes.Gameplay
         {
             _view.ShowScores(_model.PlayerOneScore , _model.PlayerTwoScore);
             _view.ShowCurrentTurn(_model.CurrentPlayerIndex);
+        }
+
+        private void RefreshConnectionState()
+        {
+            bool hasOnlineSession = _session != null;
+
+            _view.SetConnectionStateVisible(hasOnlineSession);
+
+            if (hasOnlineSession)
+            {
+                _view.ShowConnectionState(_session.ConnectionState);
+            }
         }
 
         private bool CanInteractWithBoard()
@@ -237,6 +252,17 @@ namespace DotsAndBoxes.Gameplay
         private void OnSnapshotChanged(MatchSnapshot snapshot)
         {
             ApplySnapshot(snapshot);
+        }
+
+        private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            if (!_isOpen)
+            {
+                return;
+            }
+
+            _view.ShowConnectionState(connectionState);
+            RefreshView();
         }
 
         private void ConfirmLocalPreview()

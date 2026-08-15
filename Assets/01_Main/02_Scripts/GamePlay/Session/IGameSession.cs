@@ -8,9 +8,11 @@ namespace DotsAndBoxes.Gameplay
     public interface IGameSession : IDisposable
     {
         event Action<MatchSnapshot> SnapshotChanged;
+        event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
 
         Guid MatchId { get; }
         PLAYER_INDEX_ENUM LocalPlayerIndex { get; }
+        GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; }
         bool CanConfirmCurrentTurn { get; }
 
         bool HasSnapshot { get; }

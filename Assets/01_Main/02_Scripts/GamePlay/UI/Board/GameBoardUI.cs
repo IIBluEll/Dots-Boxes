@@ -109,6 +109,7 @@ namespace DotsAndBoxes.Gameplay
                 Guid userId = Guid.Parse(_userId);
 
                 _gameSession = new SignalRGameSession(_serverUrl , matchId , userId);
+                _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
                 _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
                 _gameBoardPresenter.SessionFailed += OnSessionFailed;
             }
@@ -130,8 +131,13 @@ namespace DotsAndBoxes.Gameplay
                 _gameBoardPresenter = null;
             }
 
-            _gameSession?.Dispose();
-            _gameSession = null;
+            if ( _gameSession != null )
+            {
+                _gameSession.ConnectionStateChanged -= OnConnectionStateChanged;
+                _gameSession.Dispose();
+                _gameSession = null;
+            }
+
             _gameBoardModel = null;
         }
 
@@ -173,6 +179,11 @@ namespace DotsAndBoxes.Gameplay
         private void OnSessionFailed(Exception exception)
         {
             Debug.LogException(exception , this);
+        }
+
+        private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            Debug.Log($"[Game Session] ConnectionState={connectionState}" , this);
         }
 
         private void OnRestartRequested()

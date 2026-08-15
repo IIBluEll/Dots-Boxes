@@ -17,10 +17,12 @@ namespace DotsAndBoxes.Gameplay
         private bool _isDisposed;
 
         public event Action<MatchSnapshot> SnapshotChanged;
+        public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
 
         public Guid MatchId { get; }
         public PLAYER_INDEX_ENUM LocalPlayerIndex => PLAYER_INDEX_ENUM.NONE;
-        public bool CanConfirmCurrentTurn => _isStarted && !_isDisposed && !BOARD.IsGameFinished;
+        public GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; private set; } = GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED;
+        public bool CanConfirmCurrentTurn => ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED && _isStarted && !_isDisposed && !BOARD.IsGameFinished;
 
         public bool HasSnapshot => SNAPSHOT_STORE.HasSnapshot;
         public MatchSnapshot CurrentSnapshot => SNAPSHOT_STORE.CurrentSnapshot;
@@ -49,8 +51,11 @@ namespace DotsAndBoxes.Gameplay
                 return Task.CompletedTask;
             }
 
+            SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
+
             _isStarted = true;
             ApplyAndPublishSnapshot();
+            SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED);
             return Task.CompletedTask;
         }
 
@@ -120,7 +125,10 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
+            SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
+
             SnapshotChanged = null;
+            ConnectionStateChanged = null;
             _isDisposed = true;
         }
 
@@ -217,6 +225,17 @@ namespace DotsAndBoxes.Gameplay
             {
                 throw new ObjectDisposedException(nameof(LocalGameSession));
             }
+        }
+
+        private void SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            if ( ConnectionState == connectionState )
+            {
+                return;
+            }
+
+            ConnectionState = connectionState;
+            ConnectionStateChanged?.Invoke(connectionState);
         }
     }
 }

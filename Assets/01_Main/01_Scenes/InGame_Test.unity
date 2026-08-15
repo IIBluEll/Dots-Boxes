@@ -1620,6 +1620,54 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1661452090}
   m_CullTransparentMesh: 1
+--- !u!1 &1678725617
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1678725619}
+  - component: {fileID: 1678725618}
+  m_Layer: 0
+  m_Name: Probe
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1678725618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1678725617}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 603df71bdf757d9459f8b78a9e5a3dd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.SignalRConnectionProbe
+  _serverUrl: http://localhost:5049
+  _matchId: f7397ca4-13c1-413a-b9ba-c53a22f91217
+  _userId: d22fcd63-d190-4def-947c-2387107a9955
+  _edgeId: 1
+--- !u!4 &1678725619
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1678725617}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 285.93832, y: 171.31396, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1732531669
 GameObject:
   m_ObjectHideFlags: 0
@@ -1948,8 +1996,8 @@ MonoBehaviour:
   _resultUI: {fileID: 2104968508}
   _useOnlineSession: 1
   _serverUrl: http://localhost:5049
-  _matchId: fabf9e52-54c1-4489-852d-7726e87ecfed
-  _userId: 996509c2-84f7-4f22-9998-55ebd9c86e71
+  _matchId: f7397ca4-13c1-413a-b9ba-c53a22f91217
+  _userId: 34ca8c17-d114-4a59-b810-ad5014283d45
 --- !u!114 &2104968508
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1970,3 +2018,4 @@ SceneRoots:
   - {fileID: 1955105430}
   - {fileID: 1393924997}
   - {fileID: 1244772153}
+  - {fileID: 1678725619}

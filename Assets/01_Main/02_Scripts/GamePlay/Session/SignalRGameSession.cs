@@ -8,6 +8,14 @@ namespace DotsAndBoxes.Gameplay
 {
     public sealed class SignalRGameSession : IGameSession
     {
+        private static readonly TimeSpan[] RECONNECT_DELAYS =
+        {
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(8)
+        };
+
         private readonly GameSessionSnapshotStore SNAPSHOT_STORE = new GameSessionSnapshotStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
@@ -19,8 +27,10 @@ namespace DotsAndBoxes.Gameplay
         private bool _isDisposed;
 
         public event Action<MatchSnapshot> SnapshotChanged;
+        public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
 
         public Guid MatchId { get; }
+        public GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; private set; } = GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED;
 
         public PLAYER_INDEX_ENUM LocalPlayerIndex
         {
@@ -51,7 +61,8 @@ namespace DotsAndBoxes.Gameplay
         {
             get
             {
-                return _isStarted &&
+                return ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED &&
+                       _isStarted &&
                        _connection != null &&
                        _connection.State == HubConnectionState.Connected &&
                        HasSnapshot &&
@@ -101,9 +112,15 @@ namespace DotsAndBoxes.Gameplay
                 throw new InvalidOperationException("SignalRGameSession은 Unity 메인 스레드에서 시작해야 합니다.");
             }
 
+            SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
+
             string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
 
-            _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+            _connection = new HubConnectionBuilder().WithUrl(hubUrl).WithAutomaticReconnect(RECONNECT_DELAYS).Build();
+            _connection.Reconnecting += OnConnectionReconnecting;
+            _connection.Reconnected += OnConnectionReconnected_async;
+            _connection.Closed += OnConnectionClosed;
+
             _matchStateChangedSubscription = _connection.On<MatchSnapshot>("MatchStateChanged" , OnMatchStateChanged);
 
             try
@@ -117,9 +134,13 @@ namespace DotsAndBoxes.Gameplay
 
                 _isStarted = true;
                 ApplyAndPublishSnapshot(initialSnapshot);
+                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED);
             }
             catch
             {
+                _isStarted = false;
+                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED);
+
                 await DisposeConnection_async();
                 throw;
             }
@@ -182,12 +203,12 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _isDisposed = true;
             _isStarted = false;
-            SnapshotChanged = null;
+            SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
+            _isDisposed = true;
 
-            _matchStateChangedSubscription?.Dispose();
-            _matchStateChangedSubscription = null;
+            SnapshotChanged = null;
+            ConnectionStateChanged = null;
 
             _ = DisposeConnection_async();
         }
@@ -195,6 +216,63 @@ namespace DotsAndBoxes.Gameplay
         private void OnMatchStateChanged(MatchSnapshot snapshot)
         {
             ReceiveSnapshot(snapshot);
+        }
+
+        private Task OnConnectionReconnecting(Exception exception)
+        {
+            if ( !_isDisposed )
+            {
+                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.RECONNECTING);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private async Task OnConnectionReconnected_async(string connectionId)
+        {
+            if ( _isDisposed )
+            {
+                return;
+            }
+
+            try
+            {
+                MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>("JoinMatch" , MatchId);
+
+                if ( _isDisposed )
+                {
+                    return;
+                }
+
+                _isStarted = true;
+                ReceiveSnapshot(snapshot);
+                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED);
+            }
+            catch
+            {
+                if ( !_isDisposed )
+                {
+                    _isStarted = false;
+                    SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED);
+                }
+            }
+        }
+
+        private Task OnConnectionClosed(Exception exception)
+        {
+            if ( _isDisposed )
+            {
+                return Task.CompletedTask;
+            }
+
+            _isStarted = false;
+
+            GAME_SESSION_CONNECTION_STATE_ENUM connectionState = exception == null
+                ? GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED
+                : GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED;
+
+            SetConnectionState(connectionState);
+            return Task.CompletedTask;
         }
 
         private void ReceiveSnapshot(MatchSnapshot snapshot)
@@ -241,6 +319,9 @@ namespace DotsAndBoxes.Gameplay
 
         private async Task DisposeConnection_async()
         {
+            _matchStateChangedSubscription?.Dispose();
+            _matchStateChangedSubscription = null;
+
             HubConnection connection = _connection;
             _connection = null;
 
@@ -248,6 +329,10 @@ namespace DotsAndBoxes.Gameplay
             {
                 return;
             }
+
+            connection.Reconnecting -= OnConnectionReconnecting;
+            connection.Reconnected -= OnConnectionReconnected_async;
+            connection.Closed -= OnConnectionClosed;
 
             try
             {
@@ -259,11 +344,39 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
+        private void SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            if ( _unitySynchronizationContext == null || SynchronizationContext.Current == _unitySynchronizationContext )
+            {
+                ApplyConnectionState(connectionState);
+                return;
+            }
+
+            _unitySynchronizationContext.Post(_ =>
+            {
+                if ( !_isDisposed )
+                {
+                    ApplyConnectionState(connectionState);
+                }
+            } , null);
+        }
+
+        private void ApplyConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            if ( ConnectionState == connectionState )
+            {
+                return;
+            }
+
+            ConnectionState = connectionState;
+            ConnectionStateChanged?.Invoke(connectionState);
+        }
+
         private void ThrowIfNotStarted()
         {
-            if ( !_isStarted || _connection == null )
+            if ( !_isStarted || _connection == null || ConnectionState != GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED )
             {
-                throw new InvalidOperationException("SignalRGameSession이 시작되지 않았습니다.");
+                throw new InvalidOperationException("SignalRGameSession이 연결되지 않았습니다.");
             }
         }
 

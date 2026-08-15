@@ -44,6 +44,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private TMP_Text _playerOneScoreTxt;
         [SerializeField] private TMP_Text _playerTwoScoreTxt;
         [SerializeField] private TMP_Text _turnTxt;
+        [SerializeField] private TMP_Text _connectionStateTxt;
 
         private BoardEdgeButton[] _edgeButtons;
         private Image[] _boxImages;
@@ -128,6 +129,41 @@ namespace DotsAndBoxes.Gameplay
 
             _turnTxt.text = isPlayerOneTurn ? "PLAYER 1 TURN" : "PLAYER 2 TURN";
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
+        }
+
+        public void SetConnectionStateVisible(bool isVisible)
+        {
+            _connectionStateTxt.gameObject.SetActive(isVisible);
+        }
+
+        public void ShowConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            switch (connectionState)
+            {
+                case GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED:
+                    _connectionStateTxt.text = "DISCONNECTED";
+                    break;
+
+                case GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING:
+                    _connectionStateTxt.text = "CONNECTING...";
+                    break;
+
+                case GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED:
+                    _connectionStateTxt.text = "CONNECTED";
+                    break;
+
+                case GAME_SESSION_CONNECTION_STATE_ENUM.RECONNECTING:
+                    _connectionStateTxt.text = "RECONNECTING...";
+                    break;
+
+                case GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED:
+                    _connectionStateTxt.text = "CONNECTION FAILED";
+                    break;
+
+                default:
+                    _connectionStateTxt.text = "UNKNOWN";
+                    break;
+            }
         }
 
         public void ShowAllEdgesAvailable()
@@ -348,7 +384,8 @@ namespace DotsAndBoxes.Gameplay
                            _confirmBtn != null &&
                            _playerOneScoreTxt != null &&
                            _playerTwoScoreTxt != null &&
-                           _turnTxt != null;
+                           _turnTxt != null &&
+                           _connectionStateTxt != null;
 
             if (!isValid)
             {
