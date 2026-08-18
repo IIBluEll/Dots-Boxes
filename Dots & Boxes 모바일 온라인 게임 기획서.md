@@ -552,7 +552,7 @@ NewRatingA = RatingA + K × (ActualScoreA - ExpectedA)
 
 # 11. Matchmaking
 
-> **적용 단계: 후속 서비스 기능.** 현재 단계에서는 개발용 API로 Match를 수동 생성합니다. 자동 Queue는 두 Unity Client의 수동 Match 한 판이 완료된 뒤 구현합니다.
+> **서버 구현 완료, Unity 연결 대기.** 현재 서버에는 인메모리 FIFO Queue, 취소, 중복 대기 방지, 자동 MatchRoom 생성과 선공 무작위 결정이 구현되어 있습니다. 실제 출시 인증과 Lobby UI 연결은 후속 작업입니다.
 
 첫 출시의 일반전 Matchmaking은 Rating을 사용하지 않고 입장 순서대로 두 사용자를 연결합니다.
 
@@ -580,10 +580,10 @@ MMR ±300
 
 - 한 사용자는 동시에 하나의 Queue에만 참가할 수 있습니다.
 - 이미 진행 중인 Match가 있는 사용자는 새 Queue에 참가할 수 없습니다.
-- `JoinQueue`와 `CancelQueue`는 중복 호출되어도 최종 상태가 한 번만 변경됩니다.
+- `EnterMatchmaking`의 중복 대기는 거부하고 `CancelMatchmaking`은 대기 중일 때만 한 번 상태를 변경합니다.
 - 매칭 후보가 정해진 순간 양쪽 사용자를 원자적으로 Queue에서 제거합니다.
 - 자기 자신 또는 동일 계정의 다른 연결과 매칭하지 않습니다.
-- Match 생성 실패 시 양쪽 사용자를 Queue로 복구하거나 명시적인 실패 응답을 전달합니다.
+- Match 생성 실패 시 호출자에게 명시적인 실패를 전달합니다. 양쪽 Queue 자동 복구는 실제 장애 사례가 확인될 때 보강합니다.
 - 장시간 매칭되지 않으면 탐색 범위를 넓히되 예상 품질 저하를 UI에 표시합니다.
 
 초기 사용자 수가 적은 단계에서는 낮은 동시 접속을 숨기기 위해 AI를 랭크 상대처럼 제공하지 않습니다. AI Match와 사용자 Match는 전적 및 Rating에서 명확히 구분합니다.
@@ -592,7 +592,7 @@ MMR ±300
 
 # 12. 턴 제한 시간
 
-> **적용 단계: Match Exit / Timer Stability.** 현재 Online Vertical Slice에서는 Timer 없이 한 판을 먼저 검증합니다.
+> **서버 구현 완료, Unity 표시 대기.** 서버의 만료 판정, 자동 Edge, Timeout 횟수와 AFK 패배는 구현되었습니다. Client의 남은 시간 UI와 실제 모바일 환경 검증은 후속 작업입니다.
 
 온라인 게임의 장시간 방치를 막기 위해 Turn Timer를 적용합니다.
 
@@ -625,12 +625,12 @@ Client
 
 1. 제한 시간이 끝나면 서버가 남은 유효 Edge 중 하나를 자동 확정합니다.
 2. 자동 선택은 서버에서만 수행하며 일반 Move와 동일하게 Revision을 증가시킵니다.
-3. 한 Match에서 연속 2회 또는 누적 3회 시간 초과 시 기권 패배 처리합니다.
+3. 한 플레이어가 한 Match에서 누적 3회 시간 초과하면 기권 패배 처리합니다.
 4. 출시판에서는 Disconnect가 확정되면 즉시 기권 처리하므로 Timer를 별도로 유지하지 않습니다.
 5. 출시 후 재접속을 추가하면 Grace Period 중에도 Turn Timer는 멈추지 않습니다.
-6. 양쪽 클라이언트에 시간 초과 횟수와 자동 선택 여부를 전달합니다.
+6. 양쪽 클라이언트에 전체 Snapshot으로 시간 초과 횟수와 자동 선택된 Edge를 전달합니다.
 
-자동 선택은 서버에서 남은 유효 Edge를 대상으로 균등하게 수행합니다. 선택된 Edge와 `TIMEOUT_AUTO_MOVE` 원인을 Move 기록에 남기며, Replay에서는 난수를 다시 계산하지 않고 기록된 Edge를 사용합니다.
+자동 선택은 서버에서 남은 유효 Edge를 대상으로 균등하게 수행합니다. 현재 Move History와 Replay는 없으므로 `TIMEOUT_AUTO_MOVE` 원인 저장은 Persistence/Replay 구현 시 추가합니다.
 
 해당 정책은 초기값이며 플레이테스트에서 지나치게 가혹하거나 악용 가능성이 확인되면 조정합니다.
 
@@ -1563,12 +1563,15 @@ Result
 
 ---
 
-## Phase 5 — Match Exit / Timer Stability
+## Phase 5 — Match Exit / Timer Stability (서버 구현 완료)
 
 - 직접 나가기와 Disconnect 기권 UX
 - 서버 종료 시 기권 미적용
 - Turn Timer
 - AFK 처리
+- FINISHED이며 연결이 없는 MatchRoom 제거
+
+**남은 작업:** Unity의 나가기 확인 UX, 남은 시간 표시와 실제 Android 환경 검증.
 
 **목표:** 재접속 없이도 Match 종료, 나가기와 시간 초과 결과를 일관되게 확정.
 
@@ -1593,7 +1596,7 @@ Result
 - Android 로그인 방식 하나 선택
 - 내부 UserId
 - Access Token 및 인증 갱신
-- 단순 일반전 Matchmaking
+- 단순 일반전 Matchmaking (서버 구현 완료, Unity Lobby 연결 대기)
 - PostgreSQL
 - MatchHistory
 
@@ -2119,6 +2122,8 @@ Post-Launch Reconnect 단계에서 추가할 상황:
 - 동일 RequestId 재전송과 Revision 불일치 복구 테스트 통과
 - Client 간 최종 Snapshot 일치
 
+2026-08-18 Windows Development Build 검증에서 두 Unity Client의 수동 Match 한 판, 양쪽 Result View, 최종 상태 일치와 응답 유실 후 동일 RequestId 재전송 복구를 확인했습니다. 이는 로컬 Online Vertical Slice 검증이며 Android 실제 기기 두 대 검증을 대체하지 않습니다.
+
 ## Online Flow Completion 완료 조건
 
 - Unity Client가 응답을 받지 못한 Confirm의 RequestId를 보존함
@@ -2132,6 +2137,8 @@ Post-Launch Reconnect 단계에서 추가할 상황:
 - 서버 종료 중에는 Player 기권을 만들지 않음
 - Disconnect 기권 Snapshot이 연결된 상대에게 전달됨
 - Timeout과 AFK 정책 통합 테스트 통과
+
+2026-08-18 서버 구현 기준으로 명시적 나가기, Disconnect 기권, 서버 종료 중 기권 미적용, TurnDeadlineUtc, 자동 Edge, 플레이어별 누적 3회 AFK 패배와 종료 Room 제거를 구현했습니다. 서버 단위 테스트는 통과했으며 Unity 나가기·Timer UI와 실제 Android 환경 검증은 남아 있습니다.
 
 ## Post-Launch Reconnect 완료 조건
 
@@ -2155,6 +2162,8 @@ Post-Launch Reconnect 단계에서 추가할 상황:
 - 한 사용자의 중복 Queue 진입 방지
 - 일반전 Matchmaking으로 Match 생성 가능
 - MatchHistory 중복 저장 방지
+
+2026-08-18 서버 구현 기준으로 인메모리 FIFO Queue, 취소, 중복 대기 방지, 활성 Match 중복 참가 방지, MatchRoom 자동 생성과 선공 무작위 결정을 구현하고 SignalR 통합 검증을 통과했습니다. 실제 인증, Unity Lobby 연결, PostgreSQL과 MatchHistory는 아직 구현하지 않았으므로 이 Phase 전체가 완료된 것은 아닙니다.
 
 ## Release 완료 조건
 
@@ -2188,11 +2197,11 @@ Post-Launch Reconnect 단계에서 추가할 상황:
 
 # 44. 운영 및 관측
 
-운영 기능은 Remote Deployment 이후 단계적으로 추가합니다. 첫 Online Vertical Slice에서는 Match 흐름을 추적할 수 있는 최소 로그만 남깁니다.
+운영 기능은 Remote Deployment 이후 단계적으로 확장합니다. 현재 서버에는 Match 흐름을 추적할 수 있는 최소 구조화 로그와 상태 확인 Endpoint가 있습니다.
 
 ## 44.1 로그
 
-현재 최소 구조화 로그에 다음 식별자를 포함합니다.
+현재 최소 구조화 로그는 이벤트별로 필요한 다음 식별자를 포함합니다.
 
 ```text
 TimestampUtc
@@ -2202,7 +2211,6 @@ UserId
 MatchId
 RequestId
 Revision
-DurationMs
 ```
 
 인증 토큰, 비밀번호, DB 비밀번호는 기록하지 않습니다.
@@ -2219,17 +2227,20 @@ MATCH_FORFEITED
 EDGE_CONFIRMED
 REVISION_MISMATCH
 MATCH_FINISHED
+MATCHMAKING_QUEUED
+MATCHMAKING_COMPLETED
+TURN_TIMEOUT_HANDLED
+MATCH_ROOM_REMOVED
 ```
 
 ## 44.2 상태 확인
 
-- 서버 Process 상태를 확인하는 Health Check
-- SignalR 연결 수
-- 진행 중 Match 수
-- 평균 Match 시간
-- 비정상 종료 Match 수
+- `/health/live`: 서버 Process 응답 확인
+- `/health/ready`: 현재 단일 서버의 요청 수락 가능 상태 확인
+- `/health/core`: Shared Core 기본 보드 생성 확인
+- `/development/status`: Room 수, 등록된 Match 연결 수와 Queue 대기 인원 확인
 
-DB Readiness, Queue 대기 인원과 재접속 성공률은 관련 기능 구현 후 추가합니다.
+평균 Match 시간, Confirm p95, DB Readiness와 재접속 성공률은 관련 운영 저장소나 기능 구현 후 추가합니다. `/development/status`는 운영 환경에 노출하지 않습니다.
 
 ## 44.3 배포와 백업
 

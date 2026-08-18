@@ -12,12 +12,14 @@ namespace DotsAndBoxes.Gameplay
         private readonly PendingConfirmRequestStore PENDING_CONFIRM_REQUEST_STORE = new PendingConfirmRequestStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
+        private readonly bool SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE;
 
         private HubConnection _connection;
         private IDisposable _matchStateChangedSubscription;
         private SynchronizationContext _unitySynchronizationContext;
         private bool _isStarted;
         private bool _isDisposed;
+        private bool _hasSimulatedConfirmResponseLoss;
 
         public event Action<MatchSnapshot> SnapshotChanged;
         public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
@@ -70,7 +72,11 @@ namespace DotsAndBoxes.Gameplay
         public bool HasSnapshot => SNAPSHOT_STORE.HasSnapshot;
         public MatchSnapshot CurrentSnapshot => SNAPSHOT_STORE.CurrentSnapshot;
 
-        public SignalRGameSession(string serverUrl , Guid matchId , Guid userId)
+        public SignalRGameSession(
+            string serverUrl ,
+            Guid matchId ,
+            Guid userId ,
+            bool simulateConfirmResponseLossOnce = false)
         {
             if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
             {
@@ -90,6 +96,7 @@ namespace DotsAndBoxes.Gameplay
             SERVER_URL = serverUrl.TrimEnd('/');
             MatchId = matchId;
             USER_ID = userId;
+            SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE = simulateConfirmResponseLossOnce;
         }
 
         public async Task Start_async(CancellationToken cancellationToken = default)
@@ -111,6 +118,11 @@ namespace DotsAndBoxes.Gameplay
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
 
             string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
+
+            if ( SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE )
+            {
+                hubUrl += "&simulateConfirmResponseLossOnce=true";
+            }
 
             _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
             _connection.Closed += OnConnectionClosed;
@@ -159,6 +171,15 @@ namespace DotsAndBoxes.Gameplay
             if ( response.RequestId != request.RequestId )
             {
                 throw new InvalidOperationException("Confirm 응답의 RequestId가 요청과 일치하지 않습니다.");
+            }
+
+            if ( SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE &&
+                 !_hasSimulatedConfirmResponseLoss &&
+                 response.IsAccepted )
+            {
+                _hasSimulatedConfirmResponseLoss = true;
+                throw new InvalidOperationException(
+                    "개발용 Confirm 응답 유실을 재현했습니다. 같은 Preview를 다시 Confirm해야 합니다.");
             }
 
             PENDING_CONFIRM_REQUEST_STORE.TryComplete(response.RequestId);

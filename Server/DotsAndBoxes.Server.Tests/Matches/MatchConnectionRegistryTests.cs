@@ -80,5 +80,32 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(secondRegistered , Is.True);
             });
         }
+
+        [Test]
+        public void ConnectionQueries_RegisteredParticipants_ReturnCurrentState()
+        {
+            MatchConnectionRegistry registry = new MatchConnectionRegistry();
+            Guid matchId = Guid.NewGuid();
+            Guid playerOneUserId = Guid.NewGuid();
+            Guid playerTwoUserId = Guid.NewGuid();
+
+            registry.TryRegister("connection-one" , matchId , playerOneUserId);
+            registry.TryRegister("connection-two" , matchId , playerTwoUserId);
+
+            bool found = registry.TryGetParticipant(
+                "connection-one" ,
+                out Guid foundMatchId ,
+                out Guid foundUserId);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found , Is.True);
+                Assert.That(foundMatchId , Is.EqualTo(matchId));
+                Assert.That(foundUserId , Is.EqualTo(playerOneUserId));
+                Assert.That(registry.ContainsUser(playerTwoUserId) , Is.True);
+                Assert.That(registry.GetMatchConnectionCount(matchId) , Is.EqualTo(2));
+                Assert.That(registry.Count , Is.EqualTo(2));
+            });
+        }
     }
 }

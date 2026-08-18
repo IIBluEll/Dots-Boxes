@@ -2,11 +2,18 @@ using DotsAndBoxes.Shared;
 using DotsAndBoxes.Server.Matches;
 using DotsAndBoxes.Server.Authentication;
 using DotsAndBoxes.Server.Hubs;
+using DotsAndBoxes.Server.Matchmaking;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<MatchRoomProvider>();
 builder.Services.AddSingleton<MatchConnectionRegistry>();
+builder.Services.AddSingleton<MatchRoomLifecycleService>();
+builder.Services.AddSingleton<MatchmakingQueue>();
+builder.Services.Configure<MatchTimingOptions>(
+    builder.Configuration.GetSection(MatchTimingOptions.SECTION_NAME));
+builder.Services.AddSingleton<MatchRoomFactory>();
+builder.Services.AddHostedService<MatchTimerService>();
 builder.Services.AddSignalR();
 
 WebApplication app = builder.Build();
@@ -15,7 +22,10 @@ if ( app.Environment.IsDevelopment() )
 {
     app.UseMiddleware<DevelopmentUserSessionMiddleware>();
 
-    app.MapPost("/development/matches" , (MatchRoomProvider matchRoomProvider) =>
+    app.MapPost("/development/matches" , (
+        MatchRoomProvider matchRoomProvider ,
+        MatchRoomFactory matchRoomFactory ,
+        ILogger<Program> logger) =>
     {
         Guid playerOneUserId = Guid.NewGuid();
         Guid playerTwoUserId = Guid.NewGuid();
@@ -26,16 +36,21 @@ if ( app.Environment.IsDevelopment() )
         MatchPlayer playerTwo =
             new MatchPlayer(playerTwoUserId);
 
-        MatchRoom matchRoom = new MatchRoom(
-            Guid.NewGuid(),
-            playerOne,
-            playerTwo,
+        MatchRoom matchRoom = matchRoomFactory.Create(
+            playerOne ,
+            playerTwo ,
             PLAYER_INDEX_ENUM.PLAYER_ONE);
 
         if ( !matchRoomProvider.TryAdd(matchRoom) )
         {
             return Results.Conflict();
         }
+
+        logger.LogInformation(
+            "Development match created. MatchId={MatchId}, PlayerOneUserId={PlayerOneUserId}, PlayerTwoUserId={PlayerTwoUserId}",
+            matchRoom.MatchId ,
+            playerOne.UserId ,
+            playerTwo.UserId);
 
         return Results.Ok(new
         {
@@ -45,6 +60,26 @@ if ( app.Environment.IsDevelopment() )
             HubPath = "/hubs/game"
         });
     });
+
+    app.MapGet("/development/status" , (
+        MatchRoomProvider matchRoomProvider ,
+        MatchConnectionRegistry matchConnectionRegistry ,
+        MatchmakingQueue matchmakingQueue) =>
+    {
+        return Results.Ok(new
+        {
+            Status = "Healthy" ,
+            MatchRooms = new
+            {
+                Total = matchRoomProvider.Count ,
+                Active = matchRoomProvider.ActiveCount ,
+                Finished = matchRoomProvider.FinishedCount
+            } ,
+            ActiveMatchConnections = matchConnectionRegistry.Count ,
+            MatchmakingQueueCount = matchmakingQueue.Count ,
+            CheckedAtUtc = DateTimeOffset.UtcNow
+        });
+    });
 }
 
 app.MapGet("/health/live" , () =>
@@ -52,6 +87,15 @@ app.MapGet("/health/live" , () =>
     return Results.Ok(new
     {
         Status = "Healthy"
+    });
+});
+
+app.MapGet("/health/ready" , () =>
+{
+    return Results.Ok(new
+    {
+        Status = "Ready" ,
+        CheckedAtUtc = DateTimeOffset.UtcNow
     });
 });
 

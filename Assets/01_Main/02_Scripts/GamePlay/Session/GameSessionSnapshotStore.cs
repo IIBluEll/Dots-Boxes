@@ -128,6 +128,12 @@ namespace DotsAndBoxes.Gameplay
                     "Snapshot 점수와 Box 소유권이 일치하지 않습니다.");
             }
 
+            if ( snapshot.PlayerOneTimeoutCount < 0 ||
+                 snapshot.PlayerTwoTimeoutCount < 0 )
+            {
+                throw new InvalidOperationException("Snapshot 시간 초과 횟수는 음수일 수 없습니다.");
+            }
+
             if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
                 snapshot.GameResult != GAME_RESULT_ENUM.IN_PROGRESS )
             {
@@ -140,6 +146,12 @@ namespace DotsAndBoxes.Gameplay
             {
                 throw new InvalidOperationException(
                     "FINISHED Match의 결과가 IN_PROGRESS일 수 없습니다.");
+            }
+
+            if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED &&
+                 snapshot.TurnDeadlineUtc.HasValue )
+            {
+                throw new InvalidOperationException("FINISHED Match에는 턴 마감 시간이 없어야 합니다.");
             }
         }
 
@@ -180,6 +192,9 @@ namespace DotsAndBoxes.Gameplay
                 BoxOwners = (PLAYER_INDEX_ENUM[])snapshot.BoxOwners.Clone() ,
                 PlayerOneScore = snapshot.PlayerOneScore ,
                 PlayerTwoScore = snapshot.PlayerTwoScore ,
+                TurnDeadlineUtc = snapshot.TurnDeadlineUtc ,
+                PlayerOneTimeoutCount = snapshot.PlayerOneTimeoutCount ,
+                PlayerTwoTimeoutCount = snapshot.PlayerTwoTimeoutCount ,
                 GameResult = snapshot.GameResult
             };
         }

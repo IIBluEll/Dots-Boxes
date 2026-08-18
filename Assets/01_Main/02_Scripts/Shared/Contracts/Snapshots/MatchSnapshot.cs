@@ -4,7 +4,7 @@ namespace DotsAndBoxes.Shared
 {
     public sealed class MatchSnapshot
     {
-        public const int CURRENT_SCHEMA_VERSION = 1;
+        public const int CURRENT_SCHEMA_VERSION = 2;
 
         public int SchemaVersion { get; set; } = CURRENT_SCHEMA_VERSION;
         public Guid MatchId { get; set; }
@@ -20,6 +20,10 @@ namespace DotsAndBoxes.Shared
 
         public int PlayerOneScore { get; set; }
         public int PlayerTwoScore { get; set; }
+
+        public DateTimeOffset? TurnDeadlineUtc { get; set; }
+        public int PlayerOneTimeoutCount { get; set; }
+        public int PlayerTwoTimeoutCount { get; set; }
 
         public GAME_RESULT_ENUM GameResult { get; set; } = GAME_RESULT_ENUM.IN_PROGRESS;
     }

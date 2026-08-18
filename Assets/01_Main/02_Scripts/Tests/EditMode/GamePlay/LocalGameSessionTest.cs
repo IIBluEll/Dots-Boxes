@@ -1,5 +1,6 @@
 ﻿using DotsAndBoxes.Shared;
 using NUnit.Framework;
+using System;
 using System.Threading.Tasks;
 
 namespace DotsAndBoxes.Gameplay.Tests
@@ -7,6 +8,82 @@ namespace DotsAndBoxes.Gameplay.Tests
     [TestFixture]
     public sealed class LocalGameSessionTests
     {
+        [Test]
+        public void OnlineSessionLaunchOptions_WithNoOnlineArguments_UsesInspectorValues()
+        {
+            bool parsed = OnlineSessionLaunchOptions.TryCreate(
+                new[] { "DotsAndBoxes.exe" } ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage);
+
+            Assert.That(parsed , Is.True);
+            Assert.That(launchOptions , Is.Null);
+            Assert.That(errorMessage , Is.Empty);
+        }
+
+        [Test]
+        public void OnlineSessionLaunchOptions_WithCompleteArguments_CreatesOptions()
+        {
+            Guid matchId = Guid.NewGuid();
+            Guid userId = Guid.NewGuid();
+
+            bool parsed = OnlineSessionLaunchOptions.TryCreate(
+                new[]
+                {
+                    "DotsAndBoxes.exe" ,
+                    "--server-url=http://localhost:5049/" ,
+                    $"--match-id={matchId:D}" ,
+                    $"--user-id={userId:D}" ,
+                    "--simulate-confirm-response-loss-once"
+                } ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage);
+
+            Assert.That(parsed , Is.True);
+            Assert.That(errorMessage , Is.Empty);
+            Assert.That(launchOptions , Is.Not.Null);
+            Assert.That(launchOptions.ServerUrl , Is.EqualTo("http://localhost:5049"));
+            Assert.That(launchOptions.MatchId , Is.EqualTo(matchId));
+            Assert.That(launchOptions.UserId , Is.EqualTo(userId));
+            Assert.That(launchOptions.SimulateConfirmResponseLossOnce , Is.True);
+        }
+
+        [Test]
+        public void OnlineSessionLaunchOptions_WithPartialArguments_ReturnsError()
+        {
+            bool parsed = OnlineSessionLaunchOptions.TryCreate(
+                new[]
+                {
+                    "DotsAndBoxes.exe" ,
+                    "--server-url=http://localhost:5049"
+                } ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage);
+
+            Assert.That(parsed , Is.False);
+            Assert.That(launchOptions , Is.Null);
+            Assert.That(errorMessage , Is.Not.Empty);
+        }
+
+        [Test]
+        public void OnlineSessionLaunchOptions_WithInvalidUserId_ReturnsError()
+        {
+            bool parsed = OnlineSessionLaunchOptions.TryCreate(
+                new[]
+                {
+                    "DotsAndBoxes.exe" ,
+                    "--server-url=http://localhost:5049" ,
+                    $"--match-id={Guid.NewGuid():D}" ,
+                    "--user-id=invalid"
+                } ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage);
+
+            Assert.That(parsed , Is.False);
+            Assert.That(launchOptions , Is.Null);
+            Assert.That(errorMessage , Does.Contain("user-id"));
+        }
+
         [Test]
         public async Task Start_async_CreatesInitialSnapshotAndPublishesEvent()
         {

@@ -4,7 +4,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 Dots & Boxes의 Minimum Online Vertical Slice를 구현하기 위한 서버 책임, 프로젝트 구조, 통신 규격, Match 상태, 동시성 원칙과 개발 순서를 확정하는 기준입니다.
+이 문서는 Dots & Boxes의 Minimum Online Vertical Slice와 그 다음 서버 안정화 범위를 위한 서버 책임, 프로젝트 구조, 통신 규격, Match 상태, 동시성 원칙과 개발 순서를 확정하는 기준입니다.
 
 기획 전체를 다시 정의하지 않고 `Dots & Boxes 모바일 온라인 게임 기획서.md`에서 정한 정책을 실제 코드 구조로 옮기는 데 집중합니다.
 
@@ -21,6 +21,11 @@
 - RequestSync 상태 복구
 - DB 없는 한 판의 종료 상태
 - Match 단위 동시성 처리
+- 명시적 나가기와 Disconnect 기권
+- 종료 Room 생명주기 정리
+- 서버 권위형 Turn Timer와 AFK 기권
+- 메모리 기반 일반전 Matchmaking
+- 구조화 로그와 상태 확인 Endpoint
 - 단계별 구현 순서와 완료 조건
 
 현재 완료 목표는 다음 한 흐름입니다.
@@ -35,15 +40,15 @@
 → 양쪽 Client가 같은 결과 표시
 ```
 
-Preview, Turn Timer, Docker, 인증, Matchmaking, PostgreSQL과 Rank는 후속 Phase의 방향만 기록하며 현재 Vertical Slice 완료 조건으로 사용하지 않습니다. Disconnect 기권은 현재 범위에 포함하고 Match 재접속은 Android 첫 출시 후로 미룹니다.
+Preview, Docker, 실제 인증, PostgreSQL과 Rank는 후속 Phase의 방향만 기록하며 현재 서버 완료 조건으로 사용하지 않습니다. Disconnect와 명시적 나가기는 즉시 기권 패배로 처리하고 Match 재접속은 Android 첫 출시 후로 미룹니다.
 
 ### 이번 문서에서 확정하지 않는 범위
 
 - 최종 UI 디자인과 애니메이션
 - Preview Rate Limit 최종값
-- Turn Timer와 Post-Launch Grace Period 최종 정책
+- Post-Launch Grace Period 최종 정책
 - 외부 인증 방식의 우선순위
-- Matchmaking과 DB Schema의 최종 형태
+- 실제 인증과 DB Schema의 최종 형태
 - 시즌, 티어, Leaderboard 세부 정책
 - 다중 Game Server와 무중단 Match 복구
 - Redis 도입
@@ -68,14 +73,15 @@ Preview, Turn Timer, Docker, 인증, Matchmaking, PostgreSQL과 Rank는 후속 P
 | 버전 관리 | 권위 Snapshot 변경마다 단조 증가하는 `Revision` 사용 |
 | 중복 요청 | Client `RequestId` 기반 멱등 처리 |
 | 동시성 | MatchRoom별 `SemaphoreSlim`으로 명령 직렬화 |
-| Match 생성 | 개발용 API에서 Player 2명과 Room을 수동 생성 |
-| 결과 처리 | DB 없이 MatchRoom 메모리에 최종 결과 보관 |
+| Match 생성 | 개발용 수동 API 또는 메모리 FIFO 일반전 Queue로 생성 |
+| 결과 처리 | DB 없이 MatchRoom 메모리에 최종 결과 보관 후 연결이 모두 사라지면 제거 |
 | Preview | Phase 4에서 서버 경유 방식으로 추가 |
 | Disconnect | 현재는 참가자당 연결 하나를 등록하고 연결 종료 시 기권 패배 |
 | 재접속 | Android 첫 출시 후 별도 Post-Launch Reconnect Stage에서 추가 |
-| Timer | Phase 5 Match Exit / Timer Stability에서 추가 |
+| Timer | 서버 기준 20초, 시간 초과 자동 Edge, 플레이어별 누적 3회 시 기권 |
 | 외부 배포 | Phase 6에서 Game Server + Caddy로 시작 |
-| 인증·Queue·DB | Phase 7에서 로그인 방식 하나, 일반전 Queue, PostgreSQL 추가 |
+| 인증·DB | 후속 단계에서 로그인 방식 하나와 PostgreSQL 추가 |
+| 일반전 Queue | 현재 인메모리 FIFO 방식 구현, Rating 검색 없음 |
 | Rank | Android 첫 출시 후 재접속 안정성과 사용자 규모를 확인하고 Phase 10에서 추가 |
 | Redis와 다중 서버 | 실제 확장 필요성이 생기기 전까지 제외 |
 
@@ -116,9 +122,12 @@ Revision 증가
 전체 Snapshot 생성과 전송
 게임 종료와 메모리 결과 확정
 개별 Disconnect 시 기권자 상대의 승리 확정
+명시적 나가기 시 기권 패배 확정
+TurnDeadlineUtc 만료 시 자동 Edge 또는 누적 3회 AFK 패배 확정
+일반전 Queue에서 두 사용자를 연결하고 MatchRoom 생성
 ```
 
-Preview 전달, TurnDeadlineUtc, Match 재접속, 결과 영속화와 Rating은 해당 후속 Phase에서 Server 책임에 추가합니다.
+Preview 전달, Match 재접속, 결과 영속화와 Rating은 해당 후속 Phase에서 Server 책임에 추가합니다.
 
 로컬 2인 모드에서는 Unity의 `GameBoard_Model`이 `DotsRule`을 직접 호출할 수 있습니다. 온라인 모드에서는 Client가 `DotsRule` 결과를 권위 상태로 사용하지 않고 서버 Snapshot만 확정 상태로 반영합니다.
 
@@ -138,13 +147,15 @@ Unity Client A                         Unity Client B
                   ┌──────────────────────────┐
                   │ Development User Session │
                   │ SignalR GameHub          │
-                  │ MatchRoomProvider        │
+                   │ MatchRoomProvider        │
+                  │ MatchmakingQueue         │
                   │ MatchRoom                │
+                  │ MatchTimerService        │
                   │ DotsAndBoxes.Shared      │
                   └──────────────────────────┘
 ```
 
-Phase 6 외부 배포에서는 Game Server 앞에 Caddy와 TLS를 추가합니다. Phase 7에서 계정 또는 MatchHistory 저장이 필요할 때 Authentication, MatchmakingQueue, ResultPersistence와 PostgreSQL을 추가합니다.
+외부 배포에서는 Game Server 앞에 Caddy와 TLS를 추가합니다. 계정 또는 MatchHistory 저장이 필요할 때 Authentication, ResultPersistence와 PostgreSQL을 추가합니다. 현재 `MatchmakingQueue`는 단일 서버 메모리에서만 동작합니다.
 
 초기에는 Game Server 인스턴스를 하나만 사용합니다. MatchRoom이 서버 메모리에 있으므로 Load Balancer, Redis Backplane, 분산 Lock은 사용하지 않습니다.
 
@@ -179,7 +190,7 @@ Dots-Boxes
 └─ SERVER_ARCHITECTURE.md
 ```
 
-`Deploy`, `Matchmaking`, `Persistence`, 운영 전용 폴더는 관련 Phase에서 실제 파일이 필요할 때 추가합니다.
+`Matchmaking` 폴더는 현재 사용하며 `Deploy`, `Persistence`와 운영 전용 폴더는 관련 Phase에서 실제 파일이 필요할 때 추가합니다.
 
 초기 Vertical Slice에서는 별도의 Application, Domain, Infrastructure 프로젝트를 만들지 않습니다. 현재의 Server, Shared Core 빌드, Server Test, SignalR Test Client 구성을 유지합니다.
 
@@ -255,9 +266,7 @@ Hub는 가능한 얇게 유지합니다.
 
 ### 7.2 MatchmakingQueue
 
-> **적용 단계: Phase 7 — Account / Matchmaking / Persistence.** Minimum Online Vertical Slice에서는 개발용 API로 Match를 수동 생성합니다.
-
-도입 시 초기 Queue는 서버 메모리에서 관리합니다.
+현재 초기 Queue는 서버 메모리에서 관리합니다. `EnterMatchmaking`의 첫 사용자는 대기하고 두 번째 사용자가 들어오면 FIFO로 두 사용자를 원자적으로 제거하여 MatchRoom을 생성합니다.
 
 담당 역할:
 
@@ -266,8 +275,11 @@ Hub는 가능한 얇게 유지합니다.
 - 자기 자신과 매칭 방지
 - Match 후보 두 명을 원자적으로 Queue에서 제거
 - MatchRoom 생성 요청
+- 선공 무작위 결정
 
-Phase 7의 첫 일반전은 단순 입장 순서로 매칭합니다. Rating 범위 검색은 Rank 단계에서 필요성이 확인된 뒤 추가합니다.
+`CancelMatchmaking`과 대기 중 연결 종료는 Queue에서 사용자를 제거합니다. 이미 활성 Match에 배정된 사용자는 새 Queue 진입을 거부합니다. 서버 재시작 시 Queue와 MatchRoom은 복구되지 않습니다.
+
+Rating 범위 검색, 파티, 지역 선택과 분산 Queue는 Rank 또는 실제 확장 필요성이 확인된 뒤 추가합니다.
 
 ### 7.3 MatchRoomProvider
 
@@ -299,20 +311,23 @@ MatchRoom
 ├─ DotsBoard
 ├─ Revision
 ├─ MatchState
+├─ TurnDeadlineUtc
+├─ Player별 TimeoutCount
 ├─ 처리된 RequestId 결과 Cache
 └─ 명령 직렬화 Lock
 ```
 
-Phase 4~5에서 Preview, TurnDeadlineUtc와 Connection 상태를 필요한 순서대로 추가합니다.
+Preview와 재접속용 Connection 상태는 현재 MatchRoom에 넣지 않습니다.
 
 MatchRoom만 다음 상태를 변경할 수 있습니다.
 
 - DotsBoard
 - Revision
 - Match 상태
+- TurnDeadlineUtc와 Timeout 횟수
 - 처리된 RequestId 결과
 
-후속 Phase에서는 Preview, TurnDeadlineUtc와 플레이어 Connection 상태도 같은 Room 직렬화 경로에서 변경합니다.
+후속 Phase에서는 Preview와 재접속용 플레이어 Connection 상태도 같은 Room 직렬화 경로에서 변경합니다.
 
 ### 7.5 ResultPersistenceService
 
@@ -400,6 +415,10 @@ BoxOwners[16]        PLAYER_INDEX_ENUM[]
 PlayerOneScore       int
 PlayerTwoScore       int
 
+TurnDeadlineUtc      DateTimeOffset 또는 null
+PlayerOneTimeoutCount int
+PlayerTwoTimeoutCount int
+
 GameResult           GAME_RESULT_ENUM
 ```
 
@@ -407,15 +426,16 @@ GameResult           GAME_RESULT_ENUM
 
 보드가 정상 완료되면 `GameResult`도 DotsBoard에서 가져옵니다.
 
-Phase 5에서 Timer를 구현할 때 `TurnDeadlineUtc`를 추가합니다. 현재 Disconnect 기권은 `MatchState`, `GameResult`와 `Revision`만 변경합니다. 정상 완료와 기권을 UI 또는 MatchHistory에서 구분해야 할 때 최소 종료 사유 Contract를 추가합니다.
+`TurnDeadlineUtc`는 ACTIVE 온라인 Match에서만 서버 UTC 값을 가지며 FINISHED에서는 `null`입니다. Timeout 횟수는 플레이어별 누적값입니다. Disconnect와 명시적 나가기 기권은 `MatchState`, `GameResult`, `Revision`을 변경합니다. 정상 완료와 기권을 UI 또는 MatchHistory에서 구분해야 할 때 최소 종료 사유 Contract를 추가합니다.
 
 `SchemaVersion`은 저장 상태 Revision과 다른 Contract 형식 버전입니다. Contract 필드의 의미가 바뀔 때만 증가합니다.
 
 ### 9.5 Match Event
 
-Minimum Online Vertical Slice에서 사용하는 상태 Event:
+현재 사용하는 Event:
 
 ```text
+MatchFound
 MatchStateChanged
 ```
 
@@ -424,7 +444,6 @@ MatchStateChanged
 후속 Phase에서 필요한 시점에 다음 Event를 추가합니다.
 
 ```text
-MatchFound
 OpponentPreviewChanged
 GameFinished
 
@@ -486,7 +505,7 @@ Server는 Core 실패 값을 Server 명령 오류로 변환합니다.
 
 현재는 정상 보드 완료와 Disconnect 기권을 `MatchState`와 `GameResult`로 처리합니다. 출시판 UI는 최종 승패만 표시하므로 `MATCH_FINISH_REASON_ENUM`을 다시 추가하지 않습니다.
 
-Timeout, Post-Launch Grace Period 만료와 서버 무효 종료를 구현할 때 실제 UI와 저장 요구사항을 확인한 뒤 종료 사유 Contract를 추가합니다.
+현재 Timeout 기권도 최종 승패만 전달합니다. Post-Launch Grace Period 만료와 서버 무효 종료를 구현하거나 UI에서 종료 원인을 구분해야 할 때 실제 요구사항을 확인한 뒤 종료 사유 Contract를 추가합니다.
 
 ---
 
@@ -518,7 +537,7 @@ ACTIVE
 
 | 상태 | 허용 명령 |
 |---|---|
-| `ACTIVE` | Confirm, Sync, Disconnect 기권 전환 |
+| `ACTIVE` | Confirm, Sync, LeaveMatch, Disconnect 기권, Turn Timeout 처리 |
 | `FINISHED` | 최종 결과 조회 |
 
 Matchmaking과 DB가 추가되면 그때 `CREATED`, `WAITING_FOR_PLAYERS`, `FINISHING`, `ABORTED`의 필요성을 다시 검토합니다.
@@ -547,6 +566,8 @@ SemaphoreSlim(1, 1)
 - Revision 증가
 - Snapshot 생성
 - Match 종료 상태 전이
+- TurnDeadlineUtc 갱신
+- Timeout 횟수 증가와 자동 Edge 선택
 - 처리 결과 Cache 기록
 
 ### Lock 밖에서 처리 가능한 작업
@@ -558,7 +579,7 @@ SemaphoreSlim(1, 1)
 
 Broadcast는 Room 상태 Lock을 오래 잡지 않도록 Snapshot 생성 이후 실행합니다.
 
-Preview 제거와 TurnDeadlineUtc 갱신은 해당 기능이 추가된 뒤 Lock 안의 작업으로 확장합니다. DB Transaction은 Phase 7에서 Room을 `FINISHING`으로 전환한 뒤 Lock 밖의 Persistence Service가 수행하고, 완료 상태 전이만 다시 Room 직렬화 경로를 통과합니다.
+Preview는 추가하지 않았습니다. DB Transaction은 Persistence 단계에서 Room을 `FINISHING`으로 전환한 뒤 Lock 밖의 Persistence Service가 수행하고, 완료 상태 전이만 다시 Room 직렬화 경로를 통과합니다.
 
 처리량 측정에서 Room Lock이 실제 병목으로 확인되기 전에는 Channel 기반 Actor 구조로 변경하지 않습니다.
 
@@ -616,17 +637,15 @@ Revision은 Move 횟수가 아니라 Client에 전송하는 권위 `MatchSnapsho
 다음 경우에 1 증가합니다.
 
 - 유효한 Confirm으로 DotsBoard 상태가 변경됨
+- Turn Timer 자동 선택으로 유효한 Edge가 확정됨
+- 플레이어별 누적 3회 Timeout으로 최종 결과가 결정됨
+- 명시적 나가기 또는 개별 Disconnect로 상대 승리가 확정됨
 
 마지막 Confirm으로 게임이 끝나면 Edge, Box, 점수, GameResult와 `FINISHED`를 같은 Snapshot 변경으로 처리하므로 Revision은 한 번만 증가합니다.
 
-현재 다음 권위 상태 변경도 Revision을 증가시킵니다.
-
-- 개별 Disconnect로 상대 승리와 `FINISHED`가 확정됨
-
 후속 Phase에서는 다음 권위 상태 변경도 Revision을 증가시킵니다.
 
-- Turn Timer 자동 선택으로 유효한 Edge가 확정됨
-- Turn Timeout 또는 Post-Launch Grace Period 만료로 최종 결과가 결정됨
+- Post-Launch Grace Period 만료로 최종 결과가 결정됨
 - `FINISHING`에서 `FINISHED` 또는 `ABORTED`로 상태가 변경됨
 - 그 밖에 Snapshot에 포함된 권위 상태가 변경됨
 
@@ -777,7 +796,7 @@ Minimum Online Vertical Slice에서는 Client가 다음을 실제로 검증해�
 
 ## 19. Turn Timer
 
-> **적용 단계: Phase 5 — Match Exit / Timer Stability.** Minimum Online Vertical Slice에서는 `TurnDeadlineUtc`를 사용하지 않아도 됩니다.
+> **서버 구현 완료.** Unity의 남은 시간 UI와 실제 Android 환경 검증은 후속 Client 작업입니다.
 
 Timer의 권위 시간은 서버의 `TurnDeadlineUtc`입니다.
 
@@ -789,13 +808,21 @@ Client는 자신의 로컬 시계를 기준으로 남은 시간을 표시하지�
 Turn 제한 시간: 20초 초기값
 시간 초과: 남은 유효 Edge 중 서버가 균등 무작위 자동 선택
 자동 선택 성공: 일반 Move와 동일하게 Revision 증가
-연속 2회 또는 누적 3회 초과: 기권 패배
+플레이어별 누적 3회 초과: 기권 패배
 Post-Launch Reconnect의 Grace Period 중 Timer 계속 진행
 ```
 
-자동 선택한 Edge와 원인 `TIMEOUT_AUTO_MOVE`를 서버 기록에 남깁니다.
+현재 Snapshot에는 플레이어별 Timeout 횟수와 변경된 Edge가 포함됩니다. Move History가 아직 없으므로 `TIMEOUT_AUTO_MOVE` 종료 원인 기록은 Persistence/Replay 도입 시 추가합니다.
 
-Timer는 MatchRoom마다 별도 Thread를 만들지 않습니다. 도입 시 중앙 BackgroundService가 만료 예정 Room을 확인하거나 만료 예약 작업을 관리합니다. 정확한 방식은 Minimum Online Vertical Slice가 완료된 뒤 결정합니다.
+Timer는 MatchRoom마다 별도 Thread를 만들지 않습니다. 중앙 `MatchTimerService` 하나가 기본 500ms 간격으로 Room 목록을 확인합니다. 실제 상태 변경은 Confirm과 같은 MatchRoom Lock 안에서 실행하고, 생성된 Snapshot의 SignalR Broadcast는 Lock 밖에서 실행합니다.
+
+설정값은 `appsettings.json`의 `MatchTiming`에서 관리합니다.
+
+```text
+TurnDurationSeconds: 20
+MaxTimeoutsPerPlayer: 3
+SweepIntervalMilliseconds: 500
+```
 
 ---
 
@@ -814,12 +841,14 @@ ConnectionId → MatchId, UserId
 - 같은 참가자의 두 번째 연결은 거부합니다.
 - `ConnectionId`는 연결 추적에만 사용하고 User 신원은 인증 Claim의 UserId로 확인합니다.
 - `OnDisconnectedAsync`가 등록된 개별 연결 종료를 확정하면 `MatchRoom.TryForfeit_async()`를 호출합니다.
+- 사용자가 나가기 버튼을 선택하면 `LeaveMatch`가 같은 기권 경로를 명시적으로 호출합니다.
 - 기권 처리는 MatchRoom의 기존 `SemaphoreSlim` 경로에서 직렬화합니다.
 - `ACTIVE`인 Match만 상대 승리, `FINISHED`, Revision 증가로 한 번 전환합니다.
 - 연결된 상대에게 기존 `MatchStateChanged` 전체 Snapshot을 전송합니다.
 - 이미 종료된 Match와 등록되지 않은 연결 종료는 상태를 변경하지 않습니다.
 - Server `ApplicationStopping` 중 발생한 Disconnect는 Player 기권으로 처리하지 않습니다.
 - Server Process 장애로 메모리 Room이 유실되면 승패와 전적을 확정하지 않습니다.
+- FINISHED이고 등록된 Match 연결이 0개가 되면 `MatchRoomLifecycleService`가 Room을 메모리에서 제거합니다.
 
 출시판에는 ReconnectToken, Grace Period, 연결 상태를 저장하는 `MatchPlayer` 필드와 자동 재접속을 추가하지 않습니다.
 
@@ -949,15 +978,27 @@ REVISION_MISMATCH
 MATCH_FINISHED
 ```
 
-초기 관측값:
+현재 상태 확인 Endpoint:
 
-- SignalR 연결 수
-- 진행 중 Match 수
-- Confirm 요청 성공/실패 수
-- Revision 불일치 수
-- 평균 및 p95 Confirm 처리시간
+```text
+GET /health/live
+GET /health/ready
+GET /health/core
+GET /development/status  (Development 전용)
+```
 
-ConnectionId와 Disconnect 기권 수는 현재 연결 추적 로그에 포함할 수 있습니다. Queue 대기 인원, 재접속 성공률, ABORTED Match와 DB Transaction 실패 수는 관련 Phase에서 추가합니다.
+`/development/status`는 전체/ACTIVE/FINISHED Room 수, 등록된 Match 연결 수와 Queue 대기 인원을 반환합니다.
+
+현재 구조화 로그:
+
+- 개발용 Match 생성
+- Queue 진입·취소·매칭 완료
+- Match 참가·나가기·Disconnect 기권
+- Confirm 성공·거부와 RequestId/Revision
+- Turn Timeout 처리
+- 종료 Room 제거
+
+현재 로그는 이벤트 추적용이며 평균/p95 지연과 장기 Metric 저장은 아직 없습니다. 재접속 성공률, ABORTED Match와 DB Transaction 실패 수는 관련 Phase에서 추가합니다.
 
 ---
 
@@ -1070,6 +1111,24 @@ Revision 이상 시 전체 동기화가 가능하다.
 - Revision 불일치 후 RequestSync
 - 마지막 Snapshot 결과 표시
 
+로컬 두 Client 검증에서는 Windows Development Build 하나를 두 번 실행합니다. Client는 다음 실행 인자를 받으면 Inspector에 저장된 개발 값을 대신 사용합니다.
+
+```text
+--server-url=http://localhost:5049
+--match-id={MatchId}
+--user-id={PlayerUserId}
+```
+
+`Server/Tools/Start-LocalUnityMatch.ps1`은 로컬 Server 상태 확인, 필요 시 Server 시작, 개발용 Match 생성과 Player별 Client 두 개 실행을 담당합니다. `InGame_Test` Scene을 첫 Build Scene으로 사용하고, 기존 `SignalRConnectionProbe`는 중복 연결을 만들지 않도록 비활성화합니다.
+
+Pending Confirm 재전송 검증 시에는 Player 1에 다음 실행 인자를 추가합니다.
+
+```text
+--simulate-confirm-response-loss-once
+```
+
+Server는 Development 환경에서만 첫 정상 Confirm의 요청자 Broadcast를 누락시키고 상대에게만 Snapshot을 전달합니다. 개발용 Client는 첫 응답을 적용하지 않아 실제 응답 유실 상태를 만들고 같은 Preview와 RequestId를 유지합니다. 두 번째 Confirm에서는 Server Cache의 동일 결과를 받아 Revision 증가 없이 복구해야 합니다. `Start-LocalUnityMatch.ps1 -SimulatePlayerOneResponseLossOnce`로 이 시나리오를 실행하며 운영 환경에서는 해당 Query를 무시합니다.
+
 완료 조건:
 
 ```text
@@ -1078,6 +1137,10 @@ Revision 이상 시 전체 동기화가 가능하다.
 응답 유실 후 같은 RequestId를 재전송해도 Move가 한 번만 적용된다.
 양쪽 Client와 Server의 최종 Snapshot이 일치한다.
 ```
+
+검증 기록(2026-08-18, Windows Development Build): 두 Unity Client가 개발용 수동 Match에 참가해 4 × 4 한 판을 완료했고 양쪽 Result View의 최종 결과가 일치했습니다. 별도 응답 유실 시나리오에서는 첫 Confirm 처리 후 요청자 응답과 자기 Broadcast가 없는 상태를 만들고, 같은 RequestId 재전송으로 Revision 추가 증가 없이 양쪽 상태가 복구되는 것을 확인했습니다.
+
+서버 안정화 검증 기록(2026-08-18): Server 자동 테스트 51개가 통과했습니다. SignalR 통합 클라이언트로 전체 경기, RequestId 재전송, Revision 충돌, Disconnect 기권, 인메모리 일반전 매칭과 자동 MatchRoom 생성을 실제 실행해 통과했습니다. Turn Timer와 AFK는 고정 시간·고정 난수 단위 테스트로 검증했으며 Unity Timer UI와 Android 실제 기기 검증은 남아 있습니다.
 
 여기까지가 Minimum Online Vertical Slice입니다.
 
@@ -1089,7 +1152,7 @@ Revision 이상 시 전체 동기화가 가능하다.
 - 연결 상태와 기본 오류 UI
 - 실제 Android 기기 두 대 검증
 
-### Stage 7 — Match Exit / Timer Stability
+### Stage 7 — Match Exit / Timer Stability (서버 구현 완료)
 
 - 직접 나가기와 Disconnect 패배 UX
 - Server 종료 시 기권 미적용 검증
@@ -1097,6 +1160,9 @@ Revision 이상 시 전체 동기화가 가능하다.
 - 자동 Edge 선택
 - Timeout 횟수
 - AFK 기권
+- FINISHED이며 연결이 없는 Room 제거
+
+남은 검증은 Unity Timer 표시, 명시적 나가기 UX와 실제 모바일 환경 테스트입니다.
 
 ### Stage 8 — Remote Deployment
 
@@ -1113,12 +1179,14 @@ Revision 이상 시 전체 동기화가 가능하다.
 
 - Android 로그인 방식 하나 선택
 - 실제 인증과 내부 UserId
-- Queue 진입과 취소
-- 중복 Queue 방지
-- MatchRoom 자동 생성
-- 선공 무작위 결정
+- Queue 진입과 취소 (서버 구현 완료)
+- 중복 Queue 방지 (서버 구현 완료)
+- MatchRoom 자동 생성 (서버 구현 완료)
+- 선공 무작위 결정 (서버 구현 완료)
 - PostgreSQL Schema
 - MatchHistory 고유 키와 일반전 결과 저장
+
+Matchmaking은 인증·DB보다 먼저 독립적으로 구현했습니다. 현재 Development User Session을 사용하므로 실제 출시 계정과의 연결은 아직 완료가 아닙니다.
 
 ### Stage 10 — Release Server Readiness
 

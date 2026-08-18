@@ -20,6 +20,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private string _serverUrl = "http://localhost:5049";
         [SerializeField] private string _matchId;
         [SerializeField] private string _userId;
+        [SerializeField] private bool _simulateConfirmResponseLossOnce;
 
         private GameBoard_Model _gameBoardModel;
         private GameBoard_Presenter _gameBoardPresenter;
@@ -29,7 +30,7 @@ namespace DotsAndBoxes.Gameplay
 
         private void Awake()
         {
-            if ( !ValidateReferences() )
+            if ( !ApplyCommandLineOptions() || !ValidateReferences() )
             {
                 enabled = false;
                 return;
@@ -108,7 +109,11 @@ namespace DotsAndBoxes.Gameplay
                 Guid matchId = Guid.Parse(_matchId);
                 Guid userId = Guid.Parse(_userId);
 
-                _gameSession = new SignalRGameSession(_serverUrl , matchId , userId);
+                _gameSession = new SignalRGameSession(
+                    _serverUrl ,
+                    matchId ,
+                    userId ,
+                    _simulateConfirmResponseLossOnce);
                 _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
                 _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
                 _gameBoardPresenter.SessionFailed += OnSessionFailed;
@@ -233,6 +238,148 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return true;
+        }
+
+        private bool ApplyCommandLineOptions()
+        {
+            if ( !OnlineSessionLaunchOptions.TryCreate(
+                Environment.GetCommandLineArgs() ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage) )
+            {
+                Debug.LogError(errorMessage , this);
+                return false;
+            }
+
+            if ( launchOptions == null )
+            {
+                return true;
+            }
+
+            _useOnlineSession = true;
+            _serverUrl = launchOptions.ServerUrl;
+            _matchId = launchOptions.MatchId.ToString("D");
+            _userId = launchOptions.UserId.ToString("D");
+            _simulateConfirmResponseLossOnce = launchOptions.SimulateConfirmResponseLossOnce;
+            return true;
+        }
+    }
+
+    public sealed class OnlineSessionLaunchOptions
+    {
+        private const string SERVER_URL_PREFIX = "--server-url=";
+        private const string MATCH_ID_PREFIX = "--match-id=";
+        private const string USER_ID_PREFIX = "--user-id=";
+        private const string SIMULATE_RESPONSE_LOSS_ARGUMENT = "--simulate-confirm-response-loss-once";
+
+        public string ServerUrl { get; }
+        public Guid MatchId { get; }
+        public Guid UserId { get; }
+        public bool SimulateConfirmResponseLossOnce { get; }
+
+        private OnlineSessionLaunchOptions(
+            string serverUrl ,
+            Guid matchId ,
+            Guid userId ,
+            bool simulateConfirmResponseLossOnce)
+        {
+            ServerUrl = serverUrl;
+            MatchId = matchId;
+            UserId = userId;
+            SimulateConfirmResponseLossOnce = simulateConfirmResponseLossOnce;
+        }
+
+        public static bool TryCreate(
+            string[] arguments ,
+            out OnlineSessionLaunchOptions launchOptions ,
+            out string errorMessage)
+        {
+            launchOptions = null;
+            errorMessage = string.Empty;
+
+            if ( arguments == null )
+            {
+                errorMessage = "실행 인자 목록이 null입니다.";
+                return false;
+            }
+
+            bool hasServerUrl = TryGetValue(arguments , SERVER_URL_PREFIX , out string serverUrl);
+            bool hasMatchId = TryGetValue(arguments , MATCH_ID_PREFIX , out string matchIdText);
+            bool hasUserId = TryGetValue(arguments , USER_ID_PREFIX , out string userIdText);
+            bool shouldSimulateResponseLoss = HasArgument(arguments , SIMULATE_RESPONSE_LOSS_ARGUMENT);
+
+            if ( !hasServerUrl && !hasMatchId && !hasUserId && !shouldSimulateResponseLoss )
+            {
+                return true;
+            }
+
+            if ( !hasServerUrl || !hasMatchId || !hasUserId )
+            {
+                errorMessage = "온라인 실행 인자는 server-url, match-id, user-id를 모두 입력해야 합니다.";
+                return false;
+            }
+
+            if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
+            {
+                errorMessage = "server-url 실행 인자가 올바른 절대 URL이 아닙니다.";
+                return false;
+            }
+
+            if ( !Guid.TryParse(matchIdText , out Guid matchId) || matchId == Guid.Empty )
+            {
+                errorMessage = "match-id 실행 인자가 올바른 Guid가 아닙니다.";
+                return false;
+            }
+
+            if ( !Guid.TryParse(userIdText , out Guid userId) || userId == Guid.Empty )
+            {
+                errorMessage = "user-id 실행 인자가 올바른 Guid가 아닙니다.";
+                return false;
+            }
+
+            launchOptions = new OnlineSessionLaunchOptions(
+                serverUrl.TrimEnd('/') ,
+                matchId ,
+                userId ,
+                shouldSimulateResponseLoss);
+
+            return true;
+        }
+
+        private static bool TryGetValue(
+            string[] arguments ,
+            string prefix ,
+            out string value)
+        {
+            for ( int index = 0; index < arguments.Length; index++ )
+            {
+                string argument = arguments[ index ];
+
+                if ( argument != null && argument.StartsWith(prefix , StringComparison.OrdinalIgnoreCase) )
+                {
+                    value = argument.Substring(prefix.Length);
+                    return !string.IsNullOrWhiteSpace(value);
+                }
+            }
+
+            value = string.Empty;
+            return false;
+        }
+
+        private static bool HasArgument(string[] arguments , string expectedArgument)
+        {
+            for ( int index = 0; index < arguments.Length; index++ )
+            {
+                if ( string.Equals(
+                    arguments[ index ] ,
+                    expectedArgument ,
+                    StringComparison.OrdinalIgnoreCase) )
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

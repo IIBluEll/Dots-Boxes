@@ -10,6 +10,10 @@ namespace DotsAndBoxes.Server.Matches
         private readonly DotsBoard BOARD;
         private readonly SemaphoreSlim COMMAND_LOCK = new SemaphoreSlim(1, 1);
         private readonly Dictionary<Guid, ProcessedConfirmRequest> PROCESSED_CONFIRM_REQUESTS = new Dictionary<Guid, ProcessedConfirmRequest>();
+        private readonly TimeSpan TURN_DURATION;
+        private readonly int MAX_TIMEOUTS_PER_PLAYER;
+        private readonly Func<DateTimeOffset> UTC_NOW_PROVIDER;
+        private readonly Random RANDOM;
 
         private GAME_RESULT_ENUM _gameResult;
 
@@ -19,11 +23,22 @@ namespace DotsAndBoxes.Server.Matches
 
         public long Revision { get; private set; }
         public SERVER_MATCH_STATE_ENUM MatchState { get; private set; }
+        public DateTimeOffset? TurnDeadlineUtc { get; private set; }
+        public int PlayerOneTimeoutCount { get; private set; }
+        public int PlayerTwoTimeoutCount { get; private set; }
 
         public PLAYER_INDEX_ENUM CurrentPlayerIndex => BOARD.CurrentPlayerIndex;
         public GAME_RESULT_ENUM GameResult => _gameResult;
 
-        public MatchRoom(Guid matchId , MatchPlayer playerOne , MatchPlayer playerTwo , PLAYER_INDEX_ENUM startingPlayerIndex)
+        public MatchRoom(
+            Guid matchId ,
+            MatchPlayer playerOne ,
+            MatchPlayer playerTwo ,
+            PLAYER_INDEX_ENUM startingPlayerIndex ,
+            TimeSpan? turnDuration = null ,
+            int maxTimeoutsPerPlayer = 3 ,
+            Func<DateTimeOffset>? utcNowProvider = null ,
+            Random? random = null)
         {
             if ( matchId == Guid.Empty )
             {
@@ -43,12 +58,29 @@ namespace DotsAndBoxes.Server.Matches
                 throw new ArgumentOutOfRangeException(nameof(startingPlayerIndex));
             }
 
+            TimeSpan resolvedTurnDuration = turnDuration ?? TimeSpan.FromSeconds(20);
+
+            if ( resolvedTurnDuration <= TimeSpan.Zero )
+            {
+                throw new ArgumentOutOfRangeException(nameof(turnDuration));
+            }
+
+            if ( maxTimeoutsPerPlayer <= 0 )
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxTimeoutsPerPlayer));
+            }
+
             MatchId = matchId;
             BOARD = new DotsBoard(startingPlayerIndex);
+            TURN_DURATION = resolvedTurnDuration;
+            MAX_TIMEOUTS_PER_PLAYER = maxTimeoutsPerPlayer;
+            UTC_NOW_PROVIDER = utcNowProvider ?? (() => DateTimeOffset.UtcNow);
+            RANDOM = random ?? new Random();
 
             Revision = 0;
             MatchState = SERVER_MATCH_STATE_ENUM.ACTIVE;
             _gameResult = GAME_RESULT_ENUM.IN_PROGRESS;
+            TurnDeadlineUtc = UTC_NOW_PROVIDER() + TURN_DURATION;
         }
 
         public bool TryGetPlayerIndex(Guid userId , out PLAYER_INDEX_ENUM playerIndex)
@@ -171,6 +203,11 @@ namespace DotsAndBoxes.Server.Matches
             {
                 MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
                 _gameResult = BOARD.GameResult;
+                TurnDeadlineUtc = null;
+            }
+            else
+            {
+                TurnDeadlineUtc = UTC_NOW_PROVIDER() + TURN_DURATION;
             }
 
             ConfirmEdgeResponse response = ConfirmEdgeResponseFactory.CreateSuccess(request.RequestId, CreateSnapshotLocked());
@@ -216,6 +253,10 @@ namespace DotsAndBoxes.Server.Matches
                 PlayerOneScore = BOARD.PlayerOneScore ,
                 PlayerTwoScore = BOARD.PlayerTwoScore ,
 
+                TurnDeadlineUtc = TurnDeadlineUtc ,
+                PlayerOneTimeoutCount = PlayerOneTimeoutCount ,
+                PlayerTwoTimeoutCount = PlayerTwoTimeoutCount ,
+
                 GameResult = _gameResult
             };
         }
@@ -253,6 +294,7 @@ namespace DotsAndBoxes.Server.Matches
                     ? GAME_RESULT_ENUM.PLAYER_TWO_WIN
                     : GAME_RESULT_ENUM.PLAYER_ONE_WIN;
 
+                TurnDeadlineUtc = null;
                 Revision++;
                 return CreateSnapshotLocked();
             }
@@ -260,6 +302,101 @@ namespace DotsAndBoxes.Server.Matches
             {
                 COMMAND_LOCK.Release();
             }
+        }
+
+        public async Task<MatchSnapshot?> TryHandleTurnTimeout_async(
+            DateTimeOffset utcNow ,
+            CancellationToken cancellationToken = default)
+        {
+            await COMMAND_LOCK.WaitAsync(cancellationToken);
+
+            try
+            {
+                if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE ||
+                     !TurnDeadlineUtc.HasValue ||
+                     utcNow < TurnDeadlineUtc.Value )
+                {
+                    return null;
+                }
+
+                PLAYER_INDEX_ENUM timedOutPlayerIndex = BOARD.CurrentPlayerIndex;
+                int timeoutCount = IncrementTimeoutCount(timedOutPlayerIndex);
+
+                if ( timeoutCount >= MAX_TIMEOUTS_PER_PLAYER )
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
+                    _gameResult = timedOutPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                        ? GAME_RESULT_ENUM.PLAYER_TWO_WIN
+                        : GAME_RESULT_ENUM.PLAYER_ONE_WIN;
+                    TurnDeadlineUtc = null;
+                    Revision++;
+
+                    return CreateSnapshotLocked();
+                }
+
+                int edgeId = SelectRandomUnconfirmedEdgeId();
+                MoveResult moveResult = DotsRule.TryConfirmEdge(
+                    BOARD ,
+                    timedOutPlayerIndex ,
+                    edgeId);
+
+                if ( !moveResult.IsValid )
+                {
+                    throw new InvalidOperationException(
+                        $"서버가 선택한 Edge를 확정하지 못했습니다. EdgeId={edgeId}, Error={moveResult.Error}");
+                }
+
+                Revision++;
+
+                if ( moveResult.IsGameFinished )
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
+                    _gameResult = BOARD.GameResult;
+                    TurnDeadlineUtc = null;
+                }
+                else
+                {
+                    TurnDeadlineUtc = utcNow + TURN_DURATION;
+                }
+
+                return CreateSnapshotLocked();
+            }
+            finally
+            {
+                COMMAND_LOCK.Release();
+            }
+        }
+
+        private int IncrementTimeoutCount(PLAYER_INDEX_ENUM playerIndex)
+        {
+            if ( playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE )
+            {
+                PlayerOneTimeoutCount++;
+                return PlayerOneTimeoutCount;
+            }
+
+            PlayerTwoTimeoutCount++;
+            return PlayerTwoTimeoutCount;
+        }
+
+        private int SelectRandomUnconfirmedEdgeId()
+        {
+            List<int> unconfirmedEdgeIds = new List<int>();
+
+            for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
+            {
+                if ( BOARD.GetEdge(edgeId).OwnerPlayerIndex == PLAYER_INDEX_ENUM.NONE )
+                {
+                    unconfirmedEdgeIds.Add(edgeId);
+                }
+            }
+
+            if ( unconfirmedEdgeIds.Count == 0 )
+            {
+                throw new InvalidOperationException("진행 중인 Match에 선택 가능한 Edge가 없습니다.");
+            }
+
+            return unconfirmedEdgeIds[ RANDOM.Next(unconfirmedEdgeIds.Count) ];
         }
     }
 }
