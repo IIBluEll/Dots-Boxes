@@ -23,6 +23,8 @@ namespace DotsAndBoxes.Gameplay
         public PLAYER_INDEX_ENUM LocalPlayerIndex => PLAYER_INDEX_ENUM.NONE;
         public GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; private set; } = GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED;
         public bool CanConfirmCurrentTurn => ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED && _isStarted && !_isDisposed && !BOARD.IsGameFinished;
+        public bool HasPendingConfirm => false;
+        public int PendingConfirmEdgeId => PendingConfirmRequestStore.NO_PENDING_EDGE_ID;
 
         public bool HasSnapshot => SNAPSHOT_STORE.HasSnapshot;
         public MatchSnapshot CurrentSnapshot => SNAPSHOT_STORE.CurrentSnapshot;

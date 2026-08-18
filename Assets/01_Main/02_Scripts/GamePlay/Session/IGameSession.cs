@@ -14,6 +14,8 @@ namespace DotsAndBoxes.Gameplay
         PLAYER_INDEX_ENUM LocalPlayerIndex { get; }
         GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; }
         bool CanConfirmCurrentTurn { get; }
+        bool HasPendingConfirm { get; }
+        int PendingConfirmEdgeId { get; }
 
         bool HasSnapshot { get; }
         MatchSnapshot CurrentSnapshot { get; }

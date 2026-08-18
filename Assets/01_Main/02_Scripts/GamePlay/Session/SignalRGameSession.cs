@@ -9,6 +9,7 @@ namespace DotsAndBoxes.Gameplay
     public sealed class SignalRGameSession : IGameSession
     {
         private readonly GameSessionSnapshotStore SNAPSHOT_STORE = new GameSessionSnapshotStore();
+        private readonly PendingConfirmRequestStore PENDING_CONFIRM_REQUEST_STORE = new PendingConfirmRequestStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
 
@@ -62,6 +63,9 @@ namespace DotsAndBoxes.Gameplay
                        CurrentSnapshot.CurrentPlayerIndex == LocalPlayerIndex;
             }
         }
+
+        public bool HasPendingConfirm => PENDING_CONFIRM_REQUEST_STORE.HasPendingRequest;
+        public int PendingConfirmEdgeId => PENDING_CONFIRM_REQUEST_STORE.PendingEdgeId;
 
         public bool HasSnapshot => SNAPSHOT_STORE.HasSnapshot;
         public MatchSnapshot CurrentSnapshot => SNAPSHOT_STORE.CurrentSnapshot;
@@ -136,27 +140,28 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
-        public async Task<ConfirmEdgeResponse> ConfirmEdge_async(
-            int edgeId ,
-            CancellationToken cancellationToken = default)
+        public async Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             ThrowIfNotStarted();
 
             MatchSnapshot currentSnapshot = CurrentSnapshot;
 
-            ConfirmEdgeRequest request = new ConfirmEdgeRequest
-            {
-                MatchId = MatchId,
-                EdgeId = edgeId,
-                ExpectedRevision = currentSnapshot.Revision,
-                RequestId = Guid.NewGuid()
-            };
+            ConfirmEdgeRequest request = PENDING_CONFIRM_REQUEST_STORE.GetOrCreate(MatchId , edgeId , currentSnapshot.Revision);
 
-            ConfirmEdgeResponse response = await _connection.InvokeAsync<ConfirmEdgeResponse>(
-                "ConfirmEdge",
-                request,
-                cancellationToken);
+            ConfirmEdgeResponse response = await _connection.InvokeAsync<ConfirmEdgeResponse>("ConfirmEdge" , request , cancellationToken);
+
+            if ( response == null )
+            {
+                throw new InvalidOperationException("서버에서 ConfirmEdgeResponse를 받지 못했습니다.");
+            }
+
+            if ( response.RequestId != request.RequestId )
+            {
+                throw new InvalidOperationException("Confirm 응답의 RequestId가 요청과 일치하지 않습니다.");
+            }
+
+            PENDING_CONFIRM_REQUEST_STORE.TryComplete(response.RequestId);
 
             if ( response.Snapshot != null )
             {
@@ -194,6 +199,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            PENDING_CONFIRM_REQUEST_STORE.Clear();
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
             _isDisposed = true;
 
@@ -216,6 +222,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            PENDING_CONFIRM_REQUEST_STORE.Clear();
 
             GAME_SESSION_CONNECTION_STATE_ENUM connectionState = exception == null
                 ? GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED
@@ -264,7 +271,10 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            SnapshotChanged?.Invoke(CurrentSnapshot);
+            MatchSnapshot appliedSnapshot = SNAPSHOT_STORE.CurrentSnapshot;
+
+            PENDING_CONFIRM_REQUEST_STORE.TryComplete(appliedSnapshot);
+            SnapshotChanged?.Invoke(appliedSnapshot);
         }
 
         private async Task DisposeConnection_async()

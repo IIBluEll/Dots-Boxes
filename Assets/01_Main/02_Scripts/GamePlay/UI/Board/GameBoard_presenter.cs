@@ -142,7 +142,8 @@ namespace DotsAndBoxes.Gameplay
 
         private void RefreshView()
         {
-            bool canInteractWithBoard = CanInteractWithBoard();
+            bool canSelectEdge = CanSelectEdge();
+            bool canConfirmPreview = CanConfirmPreview();
 
             _view.ShowAllEdgesAvailable();
 
@@ -171,12 +172,12 @@ namespace DotsAndBoxes.Gameplay
                 _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
             }
 
-            if ( !canInteractWithBoard )
+            if ( !canSelectEdge )
             {
                 _view.SetBoardInteractable(false);
             }
 
-            _view.SetConfirmInteractable(_model.HasPreview && canInteractWithBoard);
+            _view.SetConfirmInteractable(canConfirmPreview);
             RefreshStatus();
         }
 
@@ -198,7 +199,7 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
-        private bool CanInteractWithBoard()
+        private bool CanSelectEdge()
         {
             if ( !_model.CanSelectEdge || _isConfirming )
             {
@@ -210,12 +211,32 @@ namespace DotsAndBoxes.Gameplay
                 return true;
             }
 
-            return _session.CanConfirmCurrentTurn;
+            return _session.CanConfirmCurrentTurn && !_session.HasPendingConfirm;
+        }
+
+        private bool CanConfirmPreview()
+        {
+            if ( !_model.HasPreview || _isConfirming )
+            {
+                return false;
+            }
+
+            if ( _session == null )
+            {
+                return _model.CanSelectEdge;
+            }
+
+            if ( !_session.CanConfirmCurrentTurn )
+            {
+                return false;
+            }
+
+            return !_session.HasPendingConfirm || _session.PendingConfirmEdgeId == _model.PreviewEdgeId;
         }
 
         private void OnEdgeSelected(int edgeId)
         {
-            if ( !CanInteractWithBoard() )
+            if ( !CanSelectEdge() )
             {
                 return;
             }
@@ -296,7 +317,7 @@ namespace DotsAndBoxes.Gameplay
 
         private async Task ConfirmOnlinePreview_async()
         {
-            if ( _isConfirming || !_model.HasPreview || !_session.CanConfirmCurrentTurn )
+            if ( !CanConfirmPreview() )
             {
                 return;
             }

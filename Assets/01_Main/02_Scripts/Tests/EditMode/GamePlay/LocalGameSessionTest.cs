@@ -26,6 +26,8 @@ namespace DotsAndBoxes.Gameplay.Tests
             Assert.That(session.MatchId , Is.Not.EqualTo(System.Guid.Empty));
             Assert.That(session.LocalPlayerIndex , Is.EqualTo(PLAYER_INDEX_ENUM.NONE));
             Assert.That(session.CanConfirmCurrentTurn , Is.True);
+            Assert.That(session.HasPendingConfirm , Is.False);
+            Assert.That(session.PendingConfirmEdgeId , Is.EqualTo(PendingConfirmRequestStore.NO_PENDING_EDGE_ID));
             Assert.That(session.CurrentSnapshot.Revision , Is.EqualTo(0));
             Assert.That(session.CurrentSnapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.ACTIVE));
             Assert.That(publishedSnapshot , Is.Not.Null);
