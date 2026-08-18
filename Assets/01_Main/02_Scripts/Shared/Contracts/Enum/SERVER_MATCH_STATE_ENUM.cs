@@ -2,11 +2,12 @@ namespace DotsAndBoxes.Shared
 {
     public enum SERVER_MATCH_STATE_ENUM
     {
-        CREATED = 0,
+        NONE = 0,
         WAITING_FOR_PLAYERS = 1,
-        ACTIVE = 2,
-        FINISHING = 3,
-        FINISHED = 4,
-        ABORTED = 5
+        WAITING_FOR_READY = 2,
+        STARTING = 3,
+        ACTIVE = 4,
+        FINISHED = 5,
+        CANCELLED = 6
     }
 }

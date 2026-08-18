@@ -7,13 +7,11 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomGameCompletionTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
         public async Task ConfirmEdge_ThroughFullBoard_FinishesMatchAsDraw()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
             {
@@ -63,7 +61,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
             Assert.Multiple(() =>
             {
-                Assert.That(finalSnapshot.Revision , Is.EqualTo(BoardTopology.EDGE_COUNT));
+                Assert.That(finalSnapshot.Revision , Is.EqualTo(initialRevision + BoardTopology.EDGE_COUNT));
                 Assert.That(confirmedEdgeCount , Is.EqualTo(BoardTopology.EDGE_COUNT));
                 Assert.That(ownedBoxCount , Is.EqualTo(BoardTopology.BOX_COUNT));
 
@@ -73,37 +71,20 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
                 Assert.That(
                     finalSnapshot.MatchState ,
-                    Is.EqualTo(SERVER_MATCH_STATE_ENUM.FINISHING));
-
-                Assert.That(
-                    finalSnapshot.FinishReason ,
-                    Is.EqualTo(MATCH_FINISH_REASON_ENUM.BOARD_COMPLETED));
-
-                Assert.That(finalSnapshot.TurnDeadlineUtc , Is.Null);
+                    Is.EqualTo(SERVER_MATCH_STATE_ENUM.FINISHED));
 
                 Assert.That(afterFinishResponse.IsAccepted , Is.False);
                 Assert.That(
                     afterFinishResponse.Error ,
                     Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE));
 
-                Assert.That(room.Revision , Is.EqualTo(BoardTopology.EDGE_COUNT));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + BoardTopology.EDGE_COUNT));
             });
         }
 
-        private static MatchRoom CreateRoom()
+        private static Task<MatchRoom> CreateRoom_async()
         {
-            MatchPlayer playerOne =
-                new MatchPlayer(Guid.NewGuid(), "connection-one");
-
-            MatchPlayer playerTwo =
-                new MatchPlayer(Guid.NewGuid(), "connection-two");
-
-            return new MatchRoom(
-                Guid.NewGuid() ,
-                playerOne ,
-                playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                TURN_DEADLINE_UTC);
+            return ActiveMatchRoomTestFactory.Create_async();
         }
     }
 }

@@ -111,3 +111,7 @@ InitTestScene*.unity*
 !/Server/**/*.slnx
 /Server/**/[Bb]in/
 /Server/**/[Oo]bj/
+
+# NuGetForUnity restored packages
+/Assets/Packages/
+/Assets/Packages.meta

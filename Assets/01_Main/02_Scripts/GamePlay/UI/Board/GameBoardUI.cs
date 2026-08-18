@@ -1,4 +1,7 @@
 using DotsAndBoxes.Shared;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace DotsAndBoxes.Gameplay
@@ -6,22 +9,36 @@ namespace DotsAndBoxes.Gameplay
     [DisallowMultipleComponent]
     public sealed class GameBoardUI : MonoBehaviour
     {
+        [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
         [SerializeField] private ResultUI _resultUI;
 
+        [Header("Game Mode")]
+        [SerializeField] private bool _useOnlineSession;
+
+        [Header("Online Development")]
+        [SerializeField] private string _serverUrl = "http://localhost:5049";
+        [SerializeField] private string _matchId;
+        [SerializeField] private string _userId;
+        [SerializeField] private bool _simulateConfirmResponseLossOnce;
+
         private GameBoard_Model _gameBoardModel;
         private GameBoard_Presenter _gameBoardPresenter;
+        private IGameSession _gameSession;
+        private CancellationTokenSource _destroyCancellationTokenSource;
         private bool _hasStarted;
 
         private void Awake()
         {
-            if ( !ValidateReferences() )
+            if ( !ApplyCommandLineOptions() || !ValidateReferences() )
             {
                 enabled = false;
                 return;
             }
 
+            _destroyCancellationTokenSource = new CancellationTokenSource();
             _resultUI.RestartRequested += OnRestartRequested;
+
             CreateGameBoard();
         }
 
@@ -29,6 +46,11 @@ namespace DotsAndBoxes.Gameplay
         {
             _hasStarted = true;
             Open();
+
+            if ( _gameSession != null )
+            {
+                _ = StartOnlineSession_async();
+            }
         }
 
         private void OnEnable()
@@ -49,19 +71,24 @@ namespace DotsAndBoxes.Gameplay
 
         private void OnDestroy()
         {
+            _destroyCancellationTokenSource?.Cancel();
+
             if ( _resultUI != null )
             {
                 _resultUI.RestartRequested -= OnRestartRequested;
             }
 
             ReleaseGameBoard();
+
+            _destroyCancellationTokenSource?.Dispose();
+            _destroyCancellationTokenSource = null;
         }
 
         public void Open()
         {
             _gameBoardPresenter?.Open();
 
-            if ( _gameBoardModel != null && _gameBoardModel.Board.IsGameFinished )
+            if ( _gameBoardModel != null && _gameBoardModel.IsGameFinished )
             {
                 ShowCurrentResult();
             }
@@ -76,38 +103,102 @@ namespace DotsAndBoxes.Gameplay
         private void CreateGameBoard()
         {
             _gameBoardModel = new GameBoard_Model();
-            _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView);
+
+            if ( _useOnlineSession )
+            {
+                Guid matchId = Guid.Parse(_matchId);
+                Guid userId = Guid.Parse(_userId);
+
+                _gameSession = new SignalRGameSession(
+                    _serverUrl ,
+                    matchId ,
+                    userId ,
+                    _simulateConfirmResponseLossOnce);
+                _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
+                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
+                _gameBoardPresenter.SessionFailed += OnSessionFailed;
+            }
+            else
+            {
+                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView);
+            }
+
             _gameBoardPresenter.GameFinished += OnGameFinished;
         }
 
         private void ReleaseGameBoard()
         {
-            if ( _gameBoardPresenter == null )
+            if ( _gameBoardPresenter != null )
             {
-                return;
+                _gameBoardPresenter.GameFinished -= OnGameFinished;
+                _gameBoardPresenter.SessionFailed -= OnSessionFailed;
+                _gameBoardPresenter.Dispose();
+                _gameBoardPresenter = null;
             }
 
-            _gameBoardPresenter.GameFinished -= OnGameFinished;
-            _gameBoardPresenter.Dispose();
-            _gameBoardPresenter = null;
+            if ( _gameSession != null )
+            {
+                _gameSession.ConnectionStateChanged -= OnConnectionStateChanged;
+                _gameSession.Dispose();
+                _gameSession = null;
+            }
+
             _gameBoardModel = null;
+        }
+
+        private async Task StartOnlineSession_async()
+        {
+            try
+            {
+                await _gameSession.Start_async(_destroyCancellationTokenSource.Token);
+            }
+            catch ( OperationCanceledException )
+            {
+                // GameObject가 파괴되면서 취소된 경우이므로 오류로 처리하지 않습니다.
+            }
+            catch ( Exception exception )
+            {
+                if ( this != null )
+                {
+                    Debug.LogException(exception , this);
+                }
+            }
         }
 
         private void ShowCurrentResult()
         {
             _resultUI.ShowResult(
-                _gameBoardModel.Board.GameResult ,
-                _gameBoardModel.Board.PlayerOneScore ,
-                _gameBoardModel.Board.PlayerTwoScore);
+                _gameBoardModel.GameResult ,
+                _gameBoardModel.PlayerOneScore ,
+                _gameBoardModel.PlayerTwoScore);
         }
 
-        private void OnGameFinished(GAME_RESULT_ENUM gameResult , int playerOneScore , int playerTwoScore)
+        private void OnGameFinished(
+            GAME_RESULT_ENUM gameResult ,
+            int playerOneScore ,
+            int playerTwoScore)
         {
             _resultUI.ShowResult(gameResult , playerOneScore , playerTwoScore);
         }
 
+        private void OnSessionFailed(Exception exception)
+        {
+            Debug.LogException(exception , this);
+        }
+
+        private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
+        {
+            Debug.Log($"[Game Session] ConnectionState={connectionState}" , this);
+        }
+
         private void OnRestartRequested()
         {
+            if ( _gameSession != null )
+            {
+                Debug.LogWarning("온라인 재대전은 아직 구현되지 않았습니다." , this);
+                return;
+            }
+
             ReleaseGameBoard();
             _gameBoardView.Clear();
 
@@ -117,15 +208,178 @@ namespace DotsAndBoxes.Gameplay
 
         private bool ValidateReferences()
         {
-            bool isValid = _gameBoardView != null &&
-                           _resultUI != null;
-
-            if ( !isValid )
+            if ( _gameBoardView == null || _resultUI == null )
             {
-                Debug.LogError("GameBoardUI의 참조가 설정되지 않았습니다." , this);
+                Debug.LogError("GameBoardUI의 UI 참조가 설정되지 않았습니다." , this);
+                return false;
             }
 
-            return isValid;
+            if ( !_useOnlineSession )
+            {
+                return true;
+            }
+
+            if ( !Uri.TryCreate(_serverUrl , UriKind.Absolute , out _) )
+            {
+                Debug.LogError("GameBoardUI의 Server URL이 올바르지 않습니다." , this);
+                return false;
+            }
+
+            if ( !Guid.TryParse(_matchId , out Guid matchId) || matchId == Guid.Empty )
+            {
+                Debug.LogError("GameBoardUI의 MatchId가 올바르지 않습니다." , this);
+                return false;
+            }
+
+            if ( !Guid.TryParse(_userId , out Guid userId) || userId == Guid.Empty )
+            {
+                Debug.LogError("GameBoardUI의 UserId가 올바르지 않습니다." , this);
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ApplyCommandLineOptions()
+        {
+            if ( !OnlineSessionLaunchOptions.TryCreate(
+                Environment.GetCommandLineArgs() ,
+                out OnlineSessionLaunchOptions launchOptions ,
+                out string errorMessage) )
+            {
+                Debug.LogError(errorMessage , this);
+                return false;
+            }
+
+            if ( launchOptions == null )
+            {
+                return true;
+            }
+
+            _useOnlineSession = true;
+            _serverUrl = launchOptions.ServerUrl;
+            _matchId = launchOptions.MatchId.ToString("D");
+            _userId = launchOptions.UserId.ToString("D");
+            _simulateConfirmResponseLossOnce = launchOptions.SimulateConfirmResponseLossOnce;
+            return true;
+        }
+    }
+
+    public sealed class OnlineSessionLaunchOptions
+    {
+        private const string SERVER_URL_PREFIX = "--server-url=";
+        private const string MATCH_ID_PREFIX = "--match-id=";
+        private const string USER_ID_PREFIX = "--user-id=";
+        private const string SIMULATE_RESPONSE_LOSS_ARGUMENT = "--simulate-confirm-response-loss-once";
+
+        public string ServerUrl { get; }
+        public Guid MatchId { get; }
+        public Guid UserId { get; }
+        public bool SimulateConfirmResponseLossOnce { get; }
+
+        private OnlineSessionLaunchOptions(
+            string serverUrl ,
+            Guid matchId ,
+            Guid userId ,
+            bool simulateConfirmResponseLossOnce)
+        {
+            ServerUrl = serverUrl;
+            MatchId = matchId;
+            UserId = userId;
+            SimulateConfirmResponseLossOnce = simulateConfirmResponseLossOnce;
+        }
+
+        public static bool TryCreate(
+            string[] arguments ,
+            out OnlineSessionLaunchOptions launchOptions ,
+            out string errorMessage)
+        {
+            launchOptions = null;
+            errorMessage = string.Empty;
+
+            if ( arguments == null )
+            {
+                errorMessage = "실행 인자 목록이 null입니다.";
+                return false;
+            }
+
+            bool hasServerUrl = TryGetValue(arguments , SERVER_URL_PREFIX , out string serverUrl);
+            bool hasMatchId = TryGetValue(arguments , MATCH_ID_PREFIX , out string matchIdText);
+            bool hasUserId = TryGetValue(arguments , USER_ID_PREFIX , out string userIdText);
+            bool shouldSimulateResponseLoss = HasArgument(arguments , SIMULATE_RESPONSE_LOSS_ARGUMENT);
+
+            if ( !hasServerUrl && !hasMatchId && !hasUserId && !shouldSimulateResponseLoss )
+            {
+                return true;
+            }
+
+            if ( !hasServerUrl || !hasMatchId || !hasUserId )
+            {
+                errorMessage = "온라인 실행 인자는 server-url, match-id, user-id를 모두 입력해야 합니다.";
+                return false;
+            }
+
+            if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
+            {
+                errorMessage = "server-url 실행 인자가 올바른 절대 URL이 아닙니다.";
+                return false;
+            }
+
+            if ( !Guid.TryParse(matchIdText , out Guid matchId) || matchId == Guid.Empty )
+            {
+                errorMessage = "match-id 실행 인자가 올바른 Guid가 아닙니다.";
+                return false;
+            }
+
+            if ( !Guid.TryParse(userIdText , out Guid userId) || userId == Guid.Empty )
+            {
+                errorMessage = "user-id 실행 인자가 올바른 Guid가 아닙니다.";
+                return false;
+            }
+
+            launchOptions = new OnlineSessionLaunchOptions(
+                serverUrl.TrimEnd('/') ,
+                matchId ,
+                userId ,
+                shouldSimulateResponseLoss);
+
+            return true;
+        }
+
+        private static bool TryGetValue(
+            string[] arguments ,
+            string prefix ,
+            out string value)
+        {
+            for ( int index = 0; index < arguments.Length; index++ )
+            {
+                string argument = arguments[ index ];
+
+                if ( argument != null && argument.StartsWith(prefix , StringComparison.OrdinalIgnoreCase) )
+                {
+                    value = argument.Substring(prefix.Length);
+                    return !string.IsNullOrWhiteSpace(value);
+                }
+            }
+
+            value = string.Empty;
+            return false;
+        }
+
+        private static bool HasArgument(string[] arguments , string expectedArgument)
+        {
+            for ( int index = 0; index < arguments.Length; index++ )
+            {
+                if ( string.Equals(
+                    arguments[ index ] ,
+                    expectedArgument ,
+                    StringComparison.OrdinalIgnoreCase) )
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

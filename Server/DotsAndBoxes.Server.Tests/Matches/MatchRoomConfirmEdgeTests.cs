@@ -7,18 +7,16 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomConfirmEdgeTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
         public async Task ConfirmEdge_WithValidRequest_ConfirmsEdgeAndIncreasesRevision()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
                 0,
-                0,
+                initialRevision,
                 Guid.NewGuid());
 
             ConfirmEdgeResponse response =
@@ -30,17 +28,18 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.NONE));
                 Assert.That(response.RequestId , Is.EqualTo(request.RequestId));
                 Assert.That(response.Snapshot , Is.Not.Null);
-                Assert.That(response.Snapshot.Revision , Is.EqualTo(1));
+                Assert.That(response.Snapshot.Revision , Is.EqualTo(initialRevision + 1));
                 Assert.That(response.Snapshot.EdgeOwners[ 0 ] , Is.EqualTo(PLAYER_INDEX_ENUM.PLAYER_ONE));
                 Assert.That(response.Snapshot.CurrentPlayerIndex , Is.EqualTo(PLAYER_INDEX_ENUM.PLAYER_TWO));
-                Assert.That(room.Revision , Is.EqualTo(1));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + 1));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithDifferentMatchId_ReturnsMatchNotFound()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 Guid.NewGuid(),
@@ -56,14 +55,15 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.IsAccepted , Is.False);
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_FOUND));
                 Assert.That(response.Snapshot , Is.Null);
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithUnknownUser_ReturnsNotMatchPlayer()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
@@ -78,14 +78,15 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.IsAccepted , Is.False);
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.NOT_A_MATCH_PLAYER));
                 Assert.That(response.Snapshot , Is.Null);
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithEmptyRequestId_ReturnsInvalidRequest()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
@@ -101,19 +102,20 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.IsAccepted , Is.False);
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.INVALID_REQUEST));
                 Assert.That(response.Snapshot , Is.Not.Null);
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithWrongRevision_ReturnsLatestSnapshot()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
                 0,
-                10,
+                initialRevision + 10,
                 Guid.NewGuid());
 
             ConfirmEdgeResponse response =
@@ -125,20 +127,21 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH));
                 Assert.That(response.ShouldRequestSync , Is.True);
                 Assert.That(response.Snapshot , Is.Not.Null);
-                Assert.That(response.Snapshot.Revision , Is.EqualTo(0));
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(response.Snapshot.Revision , Is.EqualTo(initialRevision));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WhenNotPlayerTurn_ReturnsNotYourTurn()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
                 0,
-                0,
+                initialRevision,
                 Guid.NewGuid());
 
             ConfirmEdgeResponse response = await room.ConfirmEdge_async(room.PlayerTwo.UserId, request);
@@ -148,19 +151,20 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.IsAccepted , Is.False);
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.NOT_YOUR_TURN));
                 Assert.That(response.Snapshot , Is.Not.Null);
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithInvalidEdge_ReturnsInvalidEdge()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             ConfirmEdgeRequest request = CreateRequest(
                 room.MatchId,
                 BoardTopology.EDGE_COUNT,
-                0,
+                initialRevision,
                 Guid.NewGuid());
 
             ConfirmEdgeResponse response =
@@ -171,21 +175,13 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(response.IsAccepted , Is.False);
                 Assert.That(response.Error , Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.INVALID_EDGE));
                 Assert.That(response.Snapshot , Is.Not.Null);
-                Assert.That(room.Revision , Is.EqualTo(0));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
             });
         }
 
-        private static MatchRoom CreateRoom()
+        private static Task<MatchRoom> CreateRoom_async()
         {
-            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid(), "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid(), "connection-two");
-
-            return new MatchRoom(
-                Guid.NewGuid() ,
-                playerOne ,
-                playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                TURN_DEADLINE_UTC);
+            return ActiveMatchRoomTestFactory.Create_async();
         }
 
         private static ConfirmEdgeRequest CreateRequest(

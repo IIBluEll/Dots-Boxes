@@ -7,22 +7,18 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
-        public async Task NewRoom_CreatesActiveInitialSnapshot()
+        public async Task NewRoom_CreatesWaitingInitialSnapshot()
         {
             Guid matchId = Guid.NewGuid();
-            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid(), "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid(), "connection-two");
+            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid());
+            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid());
 
             MatchRoom room = new MatchRoom(
                 matchId,
                 playerOne,
                 playerTwo,
-                PLAYER_INDEX_ENUM.PLAYER_ONE,
-                TURN_DEADLINE_UTC);
+                PLAYER_INDEX_ENUM.PLAYER_ONE);
 
             MatchSnapshot snapshot = await room.CreateSnapshot_async();
 
@@ -31,7 +27,13 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(snapshot.SchemaVersion , Is.EqualTo(MatchSnapshot.CURRENT_SCHEMA_VERSION));
                 Assert.That(snapshot.MatchId , Is.EqualTo(matchId));
                 Assert.That(snapshot.Revision , Is.EqualTo(0));
-                Assert.That(snapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.ACTIVE));
+                Assert.That(snapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS));
+                Assert.That(snapshot.JoinDeadlineUtc , Is.Not.Null);
+                Assert.That(snapshot.ReadyDeadlineUtc , Is.Null);
+                Assert.That(snapshot.MatchStartUtc , Is.Null);
+                Assert.That(snapshot.TurnDeadlineUtc , Is.Null);
+                Assert.That(snapshot.PlayerOneReady , Is.False);
+                Assert.That(snapshot.PlayerTwoReady , Is.False);
 
                 Assert.That(snapshot.PlayerOneUserId , Is.EqualTo(playerOne.UserId));
                 Assert.That(snapshot.PlayerTwoUserId , Is.EqualTo(playerTwo.UserId));
@@ -44,10 +46,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
                 Assert.That(snapshot.PlayerOneScore , Is.EqualTo(0));
                 Assert.That(snapshot.PlayerTwoScore , Is.EqualTo(0));
-                Assert.That(snapshot.TurnDeadlineUtc , Is.EqualTo(TURN_DEADLINE_UTC));
-
                 Assert.That(snapshot.GameResult , Is.EqualTo(GAME_RESULT_ENUM.IN_PROGRESS));
-                Assert.That(snapshot.FinishReason , Is.EqualTo(MATCH_FINISH_REASON_ENUM.NONE));
             });
         }
 
@@ -65,15 +64,14 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public void TryGetPlayerIndex_ReturnsPlayerSlot()
         {
-            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid(), "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid(), "connection-two");
+            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid());
+            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid());
 
             MatchRoom room = new MatchRoom(
                 Guid.NewGuid(),
                 playerOne,
                 playerTwo,
-                PLAYER_INDEX_ENUM.PLAYER_ONE,
-                TURN_DEADLINE_UTC);
+                PLAYER_INDEX_ENUM.PLAYER_ONE);
 
             bool foundPlayerOne = room.TryGetPlayerIndex(playerOne.UserId, out PLAYER_INDEX_ENUM playerOneIndex);
             bool foundPlayerTwo = room.TryGetPlayerIndex(playerTwo.UserId, out PLAYER_INDEX_ENUM playerTwoIndex);
@@ -97,8 +95,8 @@ namespace DotsAndBoxes.Server.Tests.Matches
         {
             Guid duplicatedUserId = Guid.NewGuid();
 
-            MatchPlayer playerOne = new MatchPlayer(duplicatedUserId, "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(duplicatedUserId, "connection-two");
+            MatchPlayer playerOne = new MatchPlayer(duplicatedUserId);
+            MatchPlayer playerTwo = new MatchPlayer(duplicatedUserId);
 
             Assert.Throws<ArgumentException>(() =>
             {
@@ -106,8 +104,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
                     Guid.NewGuid() ,
                     playerOne ,
                     playerTwo ,
-                    PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                    TURN_DEADLINE_UTC);
+                    PLAYER_INDEX_ENUM.PLAYER_ONE);
             });
         }
 
@@ -133,15 +130,14 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
         private static MatchRoom CreateRoom(PLAYER_INDEX_ENUM startingPlayerIndex)
         {
-            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid(), "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid(), "connection-two");
+            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid());
+            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid());
 
             return new MatchRoom(
                 Guid.NewGuid() ,
                 playerOne ,
                 playerTwo ,
-                startingPlayerIndex ,
-                TURN_DEADLINE_UTC);
+                startingPlayerIndex);
         }
     }
 }

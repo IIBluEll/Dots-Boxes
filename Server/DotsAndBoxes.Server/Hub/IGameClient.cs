@@ -4,6 +4,7 @@ namespace DotsAndBoxes.Server.Hubs
 {
     public interface IGameClient
     {
+        Task MatchFound(MatchAssignment assignment);
         Task MatchStateChanged(MatchSnapshot snapshot);
     }
 }
