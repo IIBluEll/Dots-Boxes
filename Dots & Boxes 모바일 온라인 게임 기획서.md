@@ -13,7 +13,7 @@
 - 모바일 캐주얼 보드게임
 - 1:1 턴제 전략
 - 실시간 온라인 대전
-- 랭크 경쟁
+- 출시 후 랭크 경쟁 확장
 
 ## 1.3 플랫폼
 
@@ -37,12 +37,13 @@ iOS는 현재 개발 및 출시 범위에 포함하지 않습니다.
 
 - 상대방이 현재 고민하고 있는 선을 실시간으로 확인
 - 연속 사각형 획득을 노리는 Chain 전략
-- 실시간 온라인 매칭
-- MMR 기반 랭크전
-- 시즌 랭킹
-- AI 대전
+- 실시간 일반전
+- 로컬 2인 대전
+- 혼자 규칙을 익힐 수 있는 최소 연습 AI
 
 을 핵심 콘텐츠로 합니다.
+
+MMR 기반 랭크전, 시즌 랭킹과 난이도별 완성형 AI 대전은 첫 출시 이후 확장 콘텐츠로 분리합니다.
 
 ---
 
@@ -50,19 +51,45 @@ iOS는 현재 개발 및 출시 범위에 포함하지 않습니다.
 
 ## 2.1 개발 목표
 
-단순한 Dots and Boxes 복제보다는 다음 기술을 포함한 완성형 모바일 온라인 게임을 목표로 합니다.
+최종적으로는 Android 온라인 게임 서비스를 목표로 하지만, 모든 서버 기능을 한 번에 구현하지 않습니다.
+
+현재 1차 목표는 다음 한 흐름을 완성하는 것입니다.
+
+```text
+개발용 Player 2명 준비
+→ 수동 Match 생성
+→ 두 Unity Client가 SignalR로 참가
+→ Server가 Edge Confirm 판정
+→ 전체 Snapshot 동기화
+→ 4 × 4 게임 한 판 완료
+→ 양쪽 Client가 같은 결과 표시
+```
+
+1차 목표에 필요한 기술 범위:
 
 - Unity 모바일 UI/UX
-- 순수 C# 기반 게임 로직
-- 서버 권위형 게임 처리
-- ASP.NET Core 실시간 서버
-- SignalR 기반 통신
-- Docker 서버 배포
-- PostgreSQL 데이터 저장
-- 실시간 Matchmaking
-- Elo/MMR 기반 Rank
-- 네트워크 재접속
-- AI 플레이
+- UnityEngine에 의존하지 않는 순수 C# 게임 규칙
+- ASP.NET Core와 SignalR 기반 단일 서버
+- 메모리 기반 MatchRoom
+- 서버 권위형 Confirm 처리
+- Match 단위 명령 직렬화
+- 전체 Snapshot과 Revision 동기화
+- RequestId 기반 중복 요청 방지와 Client 재전송
+- RequestSync를 통한 상태 복구
+- 핵심 단위 테스트와 서버 통합 테스트
+
+다음 항목은 1차 목표가 실제 Unity Client에서 검증된 뒤 별도 단계로 진행합니다.
+
+- 상대 Preview 전송
+- Turn Timer와 AFK 처리
+- Match 진행 중 직접 나가기 또는 개별 Disconnect의 기권 패배
+- Docker와 외부 서버 배포
+- 로그인과 계정 연결
+- Matchmaking과 PostgreSQL 전적 저장
+- Elo/MMR, Rank와 Leaderboard
+- Steam 확장
+
+후속 기능의 상세 정책이 문서에 존재하더라도 현재 구현 완료 조건으로 간주하지 않습니다.
 
 ## 2.2 포트폴리오 목표
 
@@ -70,10 +97,15 @@ iOS는 현재 개발 및 출시 범위에 포함하지 않습니다.
 
 - Unity View와 순수 C# 게임 규칙의 분리
 - 서버 권위형 턴 처리와 클라이언트 예측 범위 결정
-- 중복 요청, 메시지 순서 역전, 연결 끊김에서의 상태 일관성 유지
-- 모바일 환경에서의 재접속과 게임 복구
-- 제한된 개인 서버 환경에서의 배포, 운영, 로깅
-- 단위 테스트, 통합 테스트, 장애 테스트를 통한 근거 제시
+- RequestId와 Revision을 통한 중복 요청 및 순서 역전 대응
+- 두 Unity Client의 한 판 완주와 최종 Snapshot 일치
+- 단위 테스트와 통합 테스트를 통한 근거 제시
+
+후속 Remote Deployment와 Post-Launch Reconnect 단계까지 진행한 경우에는 다음 검증 결과를 추가합니다.
+
+- 모바일 환경에서의 Disconnect 기권 처리와 출시 후 재접속 복구
+- 제한된 개인 서버 환경에서의 배포와 운영
+- 네트워크 장애 및 기준 성능 측정 결과
 
 최종 포트폴리오에는 구현 결과뿐 아니라 설계 선택의 이유, 대안, 테스트 결과와 개선 과정을 함께 기록합니다.
 
@@ -339,7 +371,19 @@ Player A WIN
 
 # 9. 게임 모드
 
-## 9.1 AI 대전
+## 9.1 출시용 최소 연습 AI
+
+첫 출시에는 온라인 상대가 없을 때도 사용자가 한 판을 진행할 수 있도록 오프라인 연습 AI 하나만 제공합니다.
+
+- 난이도 선택 없음
+- 완성 가능한 Box가 있으면 해당 Edge 우선
+- 그 외에는 유효 Edge 중 무작위 선택
+- Chain 분석, Minimax, Alpha-Beta Pruning 없음
+- 일반전 Player처럼 위장하거나 Rank와 전적에 포함하지 않음
+
+목표는 강한 AI가 아니라 신규 사용자가 규칙을 익히고 언제든 게임을 시작할 수 있게 하는 것입니다.
+
+## 9.2 출시 후 AI 대전 확장
 
 네트워크 없이 플레이합니다.
 
@@ -403,7 +447,7 @@ AI 검증 항목:
 
 ---
 
-## 9.2 일반전
+## 9.3 일반전
 
 실시간 온라인 1:1 대전입니다.
 
@@ -413,7 +457,9 @@ AI 검증 항목:
 
 ---
 
-## 9.3 랭크전
+## 9.4 랭크전
+
+> **적용 단계: 출시 후.** 일반전 운영과 실제 사용자 규모를 확인한 뒤 구현합니다.
 
 MMR 기반 실시간 1:1 매칭입니다.
 
@@ -428,6 +474,8 @@ MMR 기반 실시간 1:1 매칭입니다.
 ---
 
 # 10. Rank 시스템
+
+> **적용 단계: 출시 후 경쟁 기능.** 일반전과 전적 저장이 안정적으로 검증되고 실제 사용자 규모를 확인한 뒤 구현합니다. 첫 출시 완료 조건에는 포함하지 않습니다.
 
 ## 10.1 Rating
 
@@ -494,7 +542,7 @@ NewRatingA = RatingA + K × (ActualScoreA - ExpectedA)
 
 - 정상 종료된 랭크 Match만 Rating 반영
 - 서버 장애로 `ABORTED`된 Match는 Rating 미반영
-- 기권 및 Grace Period 초과는 패배로 반영
+- 직접 나가기, Disconnect 기권 및 Post-Launch Grace Period 초과는 패배로 반영
 - 같은 MatchId의 Rating 계산은 한 번만 실행
 - Rating은 정수로 저장하며 반올림 규칙을 서버에서 통일
 
@@ -504,7 +552,11 @@ NewRatingA = RatingA + K × (ActualScoreA - ExpectedA)
 
 # 11. Matchmaking
 
-랭크전 매칭은 Rating 범위를 기준으로 탐색합니다.
+> **적용 단계: 후속 서비스 기능.** 현재 단계에서는 개발용 API로 Match를 수동 생성합니다. 자동 Queue는 두 Unity Client의 수동 Match 한 판이 완료된 뒤 구현합니다.
+
+첫 출시의 일반전 Matchmaking은 Rating을 사용하지 않고 입장 순서대로 두 사용자를 연결합니다.
+
+출시 후 랭크전을 추가하면 Rating 범위를 기준으로 탐색합니다.
 
 예:
 
@@ -540,6 +592,8 @@ MMR ±300
 
 # 12. 턴 제한 시간
 
+> **적용 단계: Match Exit / Timer Stability.** 현재 Online Vertical Slice에서는 Timer 없이 한 판을 먼저 검증합니다.
+
 온라인 게임의 장시간 방치를 막기 위해 Turn Timer를 적용합니다.
 
 예:
@@ -572,8 +626,9 @@ Client
 1. 제한 시간이 끝나면 서버가 남은 유효 Edge 중 하나를 자동 확정합니다.
 2. 자동 선택은 서버에서만 수행하며 일반 Move와 동일하게 Revision을 증가시킵니다.
 3. 한 Match에서 연속 2회 또는 누적 3회 시간 초과 시 기권 패배 처리합니다.
-4. 재접속 Grace Period 중에는 Turn Timer를 별도로 멈추지 않습니다.
-5. 양쪽 클라이언트에 시간 초과 횟수와 자동 선택 여부를 전달합니다.
+4. 출시판에서는 Disconnect가 확정되면 즉시 기권 처리하므로 Timer를 별도로 유지하지 않습니다.
+5. 출시 후 재접속을 추가하면 Grace Period 중에도 Turn Timer는 멈추지 않습니다.
+6. 양쪽 클라이언트에 시간 초과 횟수와 자동 선택 여부를 전달합니다.
 
 자동 선택은 서버에서 남은 유효 Edge를 대상으로 균등하게 수행합니다. 선택된 Edge와 `TIMEOUT_AUTO_MOVE` 원인을 Move 기록에 남기며, Replay에서는 난수를 다시 계산하지 않고 기록된 Edge를 사용합니다.
 
@@ -585,9 +640,9 @@ Client
 
 ## 13.1 서버
 
-개인 N100 Mini PC를 서버로 사용합니다.
+로컬 검증이 끝난 뒤 개인 N100 Mini PC를 외부 테스트 서버로 사용합니다.
 
-예상 환경:
+최종 서비스 단계의 예상 환경:
 
 ```text
 N100 Mini PC
@@ -601,11 +656,15 @@ N100 Mini PC
         └─ Caddy
 ```
 
-필요 시 Redis를 추후 추가합니다.
+첫 Online Vertical Slice는 개발 PC에서 ASP.NET Core 서버만 실행하며 PostgreSQL과 Caddy를 요구하지 않습니다.
+
+외부 배포 단계에서는 `game-server + Caddy`로 시작하고, 계정 또는 전적 저장을 구현할 때 PostgreSQL을 추가합니다. Redis는 다중 서버가 실제로 필요해질 때만 검토합니다.
 
 ---
 
 # 14. Docker 구조
+
+> **적용 단계: 외부 배포.** 로컬 두 Client 검증의 완료 조건에는 포함하지 않습니다.
 
 ```text
 docker-compose
@@ -618,7 +677,7 @@ docker-compose
 └─ caddy
 ```
 
-초기에는 단일 서버 구조로 운영합니다.
+계정과 전적 저장 전에는 `postgres` Container를 생략할 수 있습니다. 초기 외부 배포는 단일 Game Server 구조로 운영합니다.
 
 Redis는 서버 수평 확장이 필요해지는 시점까지 사용하지 않습니다.
 
@@ -628,38 +687,42 @@ Redis는 서버 수평 확장이 필요해지는 시점까지 사용하지 않�
 
 ASP.NET Core **SignalR**을 사용합니다.
 
-## Client → Server
+## 현재 Vertical Slice: Client → Server
+
+```text
+JoinMatch(MatchId)
+ConfirmEdge(MatchId, EdgeId, ExpectedRevision, RequestId)
+RequestSync
+연결 종료에 따른 Forfeit
+```
+
+## 현재 Vertical Slice: Server → Client
+
+```text
+MatchStateChanged
+ConfirmEdgeResponse
+MatchSnapshot
+```
+
+후속 단계에서 다음 명령과 Event를 추가합니다.
 
 ```text
 JoinQueue
 CancelQueue
+PreviewEdge
 
-PreviewEdge(MatchId, EdgeId, PreviewSequence)
-ConfirmEdge(MatchId, EdgeId, ExpectedRevision, RequestId)
-
-RequestSync
-
-Forfeit
-```
-
-## Server → Client
-
-```text
 MatchFound
-MatchStarted
-
 OpponentPreviewChanged
+GameFinished
 
-MatchStateChanged
-TurnChanged
-
+Post-Launch:
 OpponentDisconnected
 OpponentReconnected
-
-GameFinished
 ```
 
 ## 15.1 Preview 전송 정책
+
+> **적용 단계: Online Flow Completion.** 현재 Minimum Online Vertical Slice 완료 후 구현합니다.
 
 Preview는 게임 상태를 변경하지 않는 임시 정보지만 서버를 경유합니다.
 
@@ -778,55 +841,52 @@ Revision은 Confirm으로 실제 Match 상태가 변경될 때만 증가합니�
 
 ---
 
-# 19. 재접속
+# 19. Disconnect와 출시 후 재접속
 
-모바일 환경에서는 네트워크 변경이 빈번하기 때문에 재접속 기능을 필수 기능으로 구현합니다.
+## 19.1 출시판 Disconnect 정책
 
-예:
+출시판에서는 진행 중 Match의 재접속과 Grace Period를 제공하지 않습니다.
 
 ```text
 게임 진행 중
 ↓
-Wi-Fi 연결 해제
+직접 나가기 또는 Server가 개별 SignalR Disconnect 확정
 ↓
-SignalR Disconnect
+Disconnect한 Player 기권 패배
 ↓
-Server에서 Match 유지
+Revision 증가 및 FINISHED Snapshot 생성
 ↓
-Grace Period
-↓
-Player 재접속
-↓
-Snapshot 수신
-↓
-게임 복구
+연결된 상대에게 최종 Snapshot 전송
 ```
 
-재접속 유예 시간 예:
+- Match 참가자마다 활성 SignalR 연결을 하나만 허용합니다.
+- 직접 나가기는 연결 종료를 통해 같은 기권 경로로 처리합니다.
+- Wi-Fi 전환, 앱 백그라운드 이동과 강제 종료도 Server가 Disconnect로 확정하면 기권입니다.
+- 이미 `FINISHED`인 Match에는 Disconnect 결과를 다시 적용하지 않습니다.
+- 서버 Process 종료 중에는 개별 Player 기권으로 처리하지 않습니다.
+- 서버 장애로 MatchRoom 자체가 유실되면 승패와 전적을 확정하지 않습니다.
+- 출시판 일반전에는 Rating이 없으므로 Disconnect 기권이 Rating에 영향을 주지 않습니다.
 
-```text
-15초
-```
+이 정책은 출시 우선 범위를 위한 의도적인 제한입니다. Match 시작 화면과 최초 온라인 안내에서 네트워크 단절도 패배가 될 수 있음을 명시합니다.
 
-시간은 실제 테스트 후 변경합니다.
+## 19.2 Post-Launch Reconnect
 
-유예시간을 초과하면 기권 패배 처리합니다.
-
-## 19.1 재접속 식별
-
-재접속은 단순 ConnectionId가 아니라 다음 정보를 기준으로 검증합니다.
+재접속은 Android 첫 출시 후 실제 Disconnect 빈도와 사용자 이탈 데이터를 확인한 뒤 추가합니다.
 
 ```text
 AuthenticatedUserId
 MatchId
 ReconnectToken
+Grace Period
+전체 Snapshot 복구
 ```
 
-- SignalR ConnectionId는 재연결 시 변경될 수 있으므로 사용자 식별자로 사용하지 않습니다.
-- Match 시작 시 서버가 짧은 수명의 ReconnectToken을 발급합니다.
-- 토큰은 해당 사용자와 Match에만 사용할 수 있습니다.
-- 재접속 성공 시 이전 연결을 무효화하고 전체 Snapshot을 전달합니다.
-- 동일 계정의 중복 접속 정책은 마지막으로 인증된 연결을 활성 연결로 사용합니다.
+- SignalR ConnectionId 자체를 User 식별자로 사용하지 않습니다.
+- Match와 User에 귀속된 짧은 수명의 ReconnectToken을 사용합니다.
+- Grace Period 초기값은 실제 모바일 측정 후 결정합니다.
+- 재접속 성공 시 전체 Snapshot을 전달합니다.
+- Grace Period를 넘으면 기권 패배로 확정합니다.
+- Rank 도입 전 재접속 안정성을 먼저 검증합니다.
 
 ---
 
@@ -877,6 +937,8 @@ Dictionary<string, MatchRoom>
 ---
 
 # 21. 데이터베이스
+
+> **적용 단계: Account / Matchmaking / Persistence.** 첫 Online Vertical Slice와 외부 Game Server 단독 배포에는 PostgreSQL을 요구하지 않습니다.
 
 PostgreSQL을 사용합니다.
 
@@ -1214,18 +1276,18 @@ IsGameFinished
 ```text
 [게임 로고]
 
-[랭크전]
-
 [일반전]
 
-[AI 대전]
+[연습 AI]
 
-[랭킹]
+[로컬 2인]
 
 [프로필]
 
 [설정]
 ```
+
+출시 후 Rank 기능을 구현할 때 `[랭크전]`과 `[랭킹]` 메뉴를 추가합니다. Easy / Normal / Hard AI가 완성되면 `[연습 AI]`를 `[AI 대전]`으로 확장합니다.
 
 ---
 
@@ -1405,17 +1467,13 @@ GameBoard_view
 ```text
 게임 실행
 ↓
-Google Play Games Services 플랫폼 인증 백그라운드 시도
-↓ (성공 여부와 별도로 진행)
-게임 계정 로그인 선택
-├─ Google 계정 로그인
-└─ 아이디·비밀번호 로그인 또는 회원가입
+첫 출시에서 선택한 로그인 방식으로 인증
 ↓
 게임 서버 Access Token 발급
 ↓
 메인 메뉴
 ↓
-랭크전 선택
+일반전 선택
 ↓
 Matchmaking
 ↓
@@ -1429,12 +1487,12 @@ GameRoom 입장
 ↓
 Game Finished
 ↓
-Rating 변경
-↓
 Result
 ↓
 메인 메뉴
 ```
+
+랭크전 Flow와 Rating 변경은 출시 후 Phase에서 추가합니다.
 
 ---
 
@@ -1471,79 +1529,139 @@ Result
 
 ---
 
-## Phase 3 — Online
+## Phase 3 — Minimum Online Vertical Slice
 
-- ASP.NET Core 서버
+- ASP.NET Core 단일 서버
 - SignalR
-- Docker
-- MatchRoom
-- 게임 서버 검증
-- 상대 Preview
-- Snapshot
-- Revision
+- 개발용 User Session
+- 수동 Match 생성
+- 메모리 기반 MatchRoom
+- 서버 권위형 Confirm
+- Match 단위 Lock
+- 전체 Snapshot과 Revision
+- RequestId 멱등 처리
+- RequestSync
+- 두 Unity Client 연결
+- 참가자당 활성 연결 하나 등록
+- Disconnect 기권과 상대 승리 Snapshot
 
-**목표:** 인터넷을 통해 1:1 정상 플레이.
+**목표:** 로컬 또는 같은 개발망에서 두 Unity Client가 서버 판정으로 4 × 4 한 판을 끝내고 같은 최종 Snapshot을 유지.
 
 ---
 
-## Phase 4 — Network Stability
+## Phase 4 — Online Flow Completion
 
-- 재접속
-- 연결 끊김
-- Grace Period
-- 기권
+- 응답 유실 시 동일 RequestId 재전송
+- Client Pending Confirm 관리
+- 상대 Preview 전달
+- Match 종료 상태와 결과 표시
+- 게임 나가기 확인과 Disconnect 패배 안내
+- 기본 네트워크 오류 UX
+- 실제 Android 기기 두 대 검증
+
+**목표:** 개발용 수동 Match의 전체 플레이 흐름을 실제 Unity Client에서 완성.
+
+---
+
+## Phase 5 — Match Exit / Timer Stability
+
+- 직접 나가기와 Disconnect 기권 UX
+- 서버 종료 시 기권 미적용
 - Turn Timer
 - AFK 처리
 
-**목표:** 실제 모바일 환경에서도 게임 유지.
+**목표:** 재접속 없이도 Match 종료, 나가기와 시간 초과 결과를 일관되게 확정.
 
 ---
 
-## Phase 5 — Account / Rank
+## Phase 6 — Remote Deployment
 
-- Android Google 계정 로그인
-- 아이디·비밀번호 회원가입 및 로그인
-- 내부 UserId와 외부 계정 연결
+- Game Server Docker Image
+- Caddy TLS와 Reverse Proxy
+- Health Check
+- N100 Mini PC 배포
+- 외부 네트워크의 두 Android 기기 검증
+
+이 단계에서는 계정과 전적 저장이 없다면 PostgreSQL을 추가하지 않습니다.
+
+**목표:** 단일 서버를 외부에서 안전하게 접속 가능한 형태로 배포.
+
+---
+
+## Phase 7 — Account / Matchmaking / Persistence
+
+- Android 로그인 방식 하나 선택
+- 내부 UserId
 - Access Token 및 인증 갱신
+- 단순 일반전 Matchmaking
 - PostgreSQL
-- 전적
-- Elo Rating
-- Rank
-- Matchmaking
-- Leaderboard
+- MatchHistory
 
-**목표:** 실제 서비스 가능한 경쟁 구조 구현.
+Google 계정 로그인과 아이디·비밀번호 로그인을 동시에 구현하지 않습니다. 첫 로그인 방식이 실제 기기에서 검증된 뒤 두 번째 방식을 별도 기능으로 검토합니다.
+
+**목표:** 최소한의 계정, 자동 일반전 매칭과 전적 저장 구현.
 
 ---
 
-## Phase 6 — AI
-
-- Easy
-- Normal
-- Hard
-- Minimax
-- Alpha-Beta
-- Chain 판단
-
----
-
-## Phase 7 — Release Polish
+## Phase 8 — Release MVP
 
 - 튜토리얼
+- 최소 연습 AI
 - 설정
 - 사운드
 - 애니메이션
 - 최종 UX
 - Android Release AAB 빌드
 - Google Play Console 내부 테스트
-- Google Play Games Services 설정 및 테스트 계정 검증
+- 선택한 로그인 방식의 실제 기기 및 Release 서명 검증
 - 서버 로그 및 관리 기능
 - Crash 대응
 - 개인정보처리방침 등 스토어 출시 준비
 
+**목표:** 랭크전과 완성형 AI 없이도 사용자가 항상 한 판을 진행할 수 있는 Android 첫 버전 출시.
+
 ---
 
-## Phase 8 — Future PC / Steam
+## Phase 9 — Post-Launch Reconnect
+
+- Disconnect 빈도와 이탈 데이터 수집
+- ReconnectToken
+- Grace Period
+- SignalR 재연결 후 전체 Snapshot 복구
+- 중복 연결과 만료 Token 거부
+- Wi-Fi/LTE 전환과 백그라운드 복귀 검증
+
+**목표:** 출시판의 Disconnect 기권 정책을 실제 모바일 환경에서 검증된 재접속 정책으로 확장.
+
+---
+
+## Phase 10 — Post-Launch Rank / Competitive Service
+
+- Elo Rating
+- Rank
+- 티어
+- Leaderboard
+- 시즌 정책
+
+일반전 운영, 사용자 규모와 재접속 안정성이 확인된 뒤에만 구현합니다.
+
+**목표:** 출시 후 실제 경쟁 서비스가 필요한 시점에 Rank 기능 추가.
+
+---
+
+## Phase 11 — Post-Launch AI Expansion
+
+- Easy / Normal / Hard 난이도
+- Minimax
+- Alpha-Beta Pruning
+- Chain 판단
+- Endgame 계산
+
+출시용 최소 연습 AI의 사용 데이터와 플레이 피드백을 확인한 뒤 구현합니다.
+
+---
+
+## Phase 12 — Future PC / Steam
 
 Android 버전 출시와 운영 안정성 검증 이후에만 진행합니다.
 
@@ -1570,17 +1688,28 @@ Android 버전 출시와 운영 안정성 검증 이후에만 진행합니다.
 
 - 4 × 4 핵심 게임 규칙
 - 로컬 2인 대전
-- Normal 수준의 기본 AI
 - 서버 권위형 실시간 일반전
-- Preview와 Confirm 분리
+- 개발용 Player와 수동 Match 생성
 - Snapshot과 Revision 동기화
-- Turn Timer
-- 재접속과 Grace Period
-- Docker 기반 단일 서버 배포
+- RequestId 멱등 처리
+- 응답 유실 시 동일 RequestId를 사용하는 Client 재전송
+- RequestSync 상태 복구
+- 두 Unity Client의 한 판 완주와 최종 상태 일치
+- Match 종료 결과 표시
+- Disconnect 기권과 상대 승리 Snapshot
 - 핵심 단위 테스트 및 서버 통합 테스트
 
 ### 제외
 
+- 상대 Preview
+- Normal AI
+- Turn Timer와 AFK 처리
+- 재접속과 Grace Period
+- Docker와 외부 서버 배포
+- 로그인과 계정 연결
+- 자동 Matchmaking
+- PostgreSQL과 전적 저장
+- Elo/MMR와 Rank
 - 시즌과 티어
 - Leaderboard
 - Hard AI 완전 구현
@@ -1589,31 +1718,34 @@ Android 버전 출시와 운영 안정성 검증 이후에만 진행합니다.
 - 다중 Game Server 및 무중단 Match 복구
 - PC 및 Steam 연동
 
-Vertical Slice의 목적은 실제 서비스 기능을 모두 갖추는 것이 아니라, 게임 한 판의 전체 흐름과 온라인 안정성을 증명하는 것입니다.
+Vertical Slice의 목적은 실제 서비스 기능을 모두 갖추는 것이 아니라, 서버 권위형 한 판의 시작부터 종료까지를 실제 Unity Client에서 증명하는 것입니다. 네트워크 안정성과 운영 배포는 이 Slice가 끝난 뒤 독립적으로 검증합니다.
 
 ## 36.2 1차 서비스 공개 범위
 
-Vertical Slice 검증이 끝난 뒤 **Android 전용 Google Play Store 버전**으로 다음 기능을 추가합니다.
+Vertical Slice와 Match Exit / Timer Stability 검증이 끝난 뒤 **Android 전용 Google Play Store 버전**을 준비합니다.
 
 ### 필수
 
 - 4 × 4 Dots and Boxes
-- Google 계정 로그인
-- 아이디·비밀번호 회원가입 및 로그인
-- AI 대전
+- Google 계정 또는 아이디·비밀번호 중 먼저 선택한 로그인 방식 하나
+- 최소 연습 AI 한 종류
 - 실시간 일반전
-- 실시간 랭크전
 - 상대 Edge Preview
-- MMR
-- 티어
-- Leaderboard
-- 전적
+- 단순 일반전 Matchmaking
+- MatchHistory
 - Turn Timer
 - 기권
-- 재접속
+- Disconnect 시 기권 패배
 
 ### 후순위
 
+- 두 번째 로그인 방식과 계정 연결
+- Easy / Normal / Hard AI 대전
+- Minimax와 Chain 분석
+- 실시간 랭크전
+- MMR와 티어
+- Leaderboard
+- 재접속과 Grace Period
 - 친구 초대
 - 이모티콘
 - 3 × 3 / 5 × 5 보드
@@ -1711,21 +1843,19 @@ Preview는 사용자 의사를 보여주는 실시간 연출이고 Confirm만 �
 
 ### 5. 과도한 서버 구조를 만들지 않는다.
 
-초기에는:
+첫 Online Vertical Slice는 다음으로 제한합니다.
 
 ```text
 ASP.NET Core
 +
 SignalR
 +
-PostgreSQL
-+
-Docker
+메모리 MatchRoom
 ```
 
-만으로 구성합니다.
+외부 배포 시 Docker와 Caddy를 추가하고, 계정 또는 전적을 저장하는 단계에서만 PostgreSQL을 추가합니다.
 
-Redis나 다중 Game Server는 실제 확장 필요성이 발생했을 때 도입합니다.
+Redis, 다중 Game Server, 분산 Lock, SignalR Backplane은 실제 확장 필요성이 발생했을 때만 검토합니다.
 
 ---
 
@@ -1733,9 +1863,9 @@ Redis나 다중 Game Server는 실제 확장 필요성이 발생했을 때 도�
 
 본 프로젝트는 단순한 보드게임 구현이 아니라 다음을 보여주는 것을 목표로 합니다.
 
-> **Unity 기반 모바일 게임 + 순수 C# 게임 로직 + AI + 실시간 통신 + 서버 권위형 멀티플레이 + Docker 기반 자체 서버 + DB + Matchmaking + Ranking**
+> **Unity 기반 모바일 게임 + 순수 C# 게임 로직 + 실시간 통신 + 서버 권위형 멀티플레이 + 단계적으로 검증한 Android 출시 과정**
 
-게임 자체의 규칙은 간단하게 유지하고, 완성도 높은 모바일 UX와 안정적인 온라인 시스템을 프로젝트의 핵심 경쟁력으로 삼습니다.
+게임 규칙과 첫 출시 범위는 간단하게 유지하고, 실제 배포 가능한 모바일 UX와 안정적인 일반전을 먼저 완성합니다. 완성형 AI와 Ranking은 출시 후 확장 결과로 별도 기록합니다.
 
 ---
 
@@ -1756,7 +1886,7 @@ QUEUEING
 ↓
 MATCH_LOADING
 ↓
-PLAYING ←→ RECONNECTING
+PLAYING
 ↓
 RESULT
 ↓
@@ -1771,8 +1901,9 @@ MAIN_MENU
 | QUEUEING | Queue 취소 |
 | MATCH_LOADING | 초기 Snapshot 수신 대기 |
 | PLAYING | Preview, Confirm, Forfeit |
-| RECONNECTING | 재접속 취소, 연결 상태 확인 |
 | RESULT | 결과 확인, 메인 메뉴 이동 |
+
+`RECONNECTING` 상태는 Post-Launch Reconnect에서 추가합니다. 출시판은 `PLAYING` 중 연결이 종료되면 해당 Match를 기권 결과로 확정하고 메인 메뉴에서 안내합니다.
 
 ## 40.2 서버 Match 상태
 
@@ -1791,7 +1922,7 @@ FINISHED
 정상 완료할 수 없는 경우 `ABORTED`로 전환합니다.
 
 - `ACTIVE`에서만 Preview와 Confirm을 허용합니다.
-- 플레이어 한 명이 Disconnect되어도 Match 상태는 Grace Period 동안 `ACTIVE`로 유지합니다.
+- 출시판은 플레이어 한 명의 Disconnect가 확정되면 상대 승리로 `FINISHED` 처리합니다.
 - `FINISHING`에서는 결과 계산과 DB Transaction을 수행하며 추가 Move를 받지 않습니다.
 - 결과 저장이 완료된 뒤에만 `FINISHED`로 전환합니다.
 - 서버 장애, 관리자 종료 등 결과를 확정할 수 없는 경우 `ABORTED`로 전환하고 Rating을 반영하지 않습니다.
@@ -1817,29 +1948,30 @@ FINISHED
 - 하나의 Edge가 두 플레이어에게 중복 소유되지 않음
 - 하나의 Box가 두 플레이어에게 중복 지급되지 않음
 - 동일 RequestId가 여러 번 도착해도 Move가 한 번만 적용됨
-- 게임 결과와 Rating이 중복 저장되지 않음
-- 동일 Move 기록으로 Replay 시 동일한 최종 상태가 생성됨
+- 두 Client와 Server의 최종 Snapshot이 일치함
+- 응답 유실 후 동일 RequestId 재전송이 한 번의 Move로 처리됨
+
+Rating 중복 저장과 Replay 결정론 검증은 해당 기능 구현 단계에서 추가합니다.
 
 ## 41.2 성능
 
 - 서버 내부 Confirm 처리 시간 `p95 100ms 이하`
-- 국내 일반 네트워크 기준 Confirm 요청부터 Snapshot 반영까지 `p95 300ms 이하`를 목표로 측정
+- 로컬 개발 환경에서 Confirm 요청부터 Snapshot 반영까지의 평균과 p95 기록
 - Android 기준 Edge 터치 후 로컬 Preview 표시 `100ms 이하`
-- Hard AI 한 Turn 최대 `1초`
 
-네트워크 왕복 시간과 서버 내부 처리 시간은 분리해 측정합니다.
+외부 배포 후에는 네트워크 왕복 시간과 서버 내부 처리 시간을 분리해 측정하고, 실제 측정값을 근거로 목표를 다시 설정합니다. Hard AI 성능은 AI 구현 단계에서 별도로 검증합니다.
 
 ## 41.3 부하 검증
 
-N100 Mini PC 초기 목표:
+첫 Online Vertical Slice에는 동시 연결 수를 합격 기준으로 두지 않습니다. 다음 흐름을 우선 검증합니다.
 
 ```text
-동시 연결 100명
-동시 Match 50개
-Match당 Preview 포함 실시간 메시지 처리
+두 Unity Client 연결
+→ 한 Match 전체 진행
+→ 최종 Snapshot 일치
 ```
 
-CPU, Memory, 메시지 처리량, DB 응답시간과 오류율을 기록합니다. 목표를 달성하지 못하면 수치를 숨기지 않고 병목 원인과 개선 결과를 포트폴리오에 포함합니다.
+외부 배포가 완료되면 N100 Mini PC에서 CPU, Memory, 동시 연결, 동시 Match와 Confirm 처리량의 기준값을 측정합니다. `동시 연결 100명`, `동시 Match 50개` 같은 목표는 기준 측정 후 필요성이 있을 때만 설정합니다.
 
 ## 41.4 모바일 지원
 
@@ -1851,7 +1983,7 @@ CPU, Memory, 메시지 처리량, DB 응답시간과 오류율을 기록합니�
 - Safe Area 대응
 - 저사양, 중간 사양, 고사양 실기기에서 확인
 - Wi-Fi, LTE/5G 전환과 일시적인 네트워크 손실 확인
-- 백그라운드 전환 및 복귀 시 재접속 확인
+- 백그라운드 전환 및 네트워크 단절 시 기권 안내 확인
 
 ## 41.5 접근성
 
@@ -1891,31 +2023,48 @@ Player1Score + Player2Score = 소유자가 있는 Box 수
 
 ## 42.2 서버 통합 테스트
 
-- 두 Client의 Queue 및 Match 생성
+- 개발용 Match 수동 생성과 두 Client 참가
 - Turn이 아닌 Client의 Confirm 거부
 - 중복 RequestId 처리
+- 응답 유실 후 동일 RequestId 재전송
+- 같은 RequestId에 다른 내용을 담은 요청 거부
 - 오래된 ExpectedRevision 거부
-- Preview Rate Limit
-- Disconnect 후 Grace Period 내 재접속
-- Grace Period 초과 기권
-- Match 종료와 Rating Transaction
+- RequestSync 후 최신 Snapshot 복구
+- 마지막 Move와 Match 종료 결과
+- 두 Client의 최종 Snapshot 일치
+- 한 Client Disconnect 시 상대 승리 Snapshot 수신
+- 이미 종료된 Match에서 Disconnect 결과 중복 적용 방지
+
+다음 테스트는 해당 후속 기능을 구현할 때 추가합니다.
+
+- Preview 순서와 Rate Limit
+- Post-Launch Reconnect의 Grace Period 내 복구
+- Post-Launch Grace Period 초과 기권
+- Match 종료와 DB Transaction
 - 동일 Match 결과 중복 저장 방지
 
 ## 42.3 네트워크 장애 테스트
 
-다음 상황을 인위적으로 재현합니다.
+Online Vertical Slice에서 먼저 재현할 상황:
 
 - 메시지 지연
 - 메시지 순서 역전
 - 응답 유실 후 요청 재전송
+- 연결된 상태에서 Revision 이상 발생 후 RequestSync
+- 개별 Client Disconnect 후 상대의 기권 승리 수신
+
+Post-Launch Reconnect 단계에서 추가할 상황:
+
 - Wi-Fi와 모바일 네트워크 전환
 - 앱 백그라운드 전환
-- 서버 연결 일시 중단
-- DB 연결 실패
+- Grace Period 내외 재접속
+- DB 구현 이후 DB 연결 실패
 
 각 테스트에서 최종적으로 양쪽 Client와 Server의 Revision, Edge, Box, Score가 일치하는지 확인합니다.
 
 ## 42.4 부하 테스트
+
+부하 테스트는 Remote Deployment 이후 기준 성능을 측정한 뒤 진행합니다. 첫 Online Vertical Slice의 완료 조건에는 포함하지 않습니다.
 
 - Queue 진입과 취소 반복
 - 다수 Match 동시 생성
@@ -1930,7 +2079,8 @@ Player1Score + Player2Score = 소유자가 있는 Box 수
 - SignalR 연결 수
 - CPU 및 Memory
 - DB Connection 수
-- 오류율과 재접속 성공률
+- 오류율과 Disconnect 기권 비율
+- Post-Launch 재접속 성공률
 
 ## 42.5 실제 기기 UX 테스트
 
@@ -1963,48 +2113,86 @@ Player1Score + Player2Score = 소유자가 있는 Box 수
 
 ## Online 완료 조건
 
-- 서로 다른 네트워크의 두 Android 기기에서 한 판 완료
+- 개발용 수동 Match에 두 Unity Client 참가
+- 4 × 4 한 판을 시작부터 결과 표시까지 완료
 - Server만 게임 상태를 변경함
-- 중복 요청과 Revision 불일치 테스트 통과
+- 동일 RequestId 재전송과 Revision 불일치 복구 테스트 통과
 - Client 간 최종 Snapshot 일치
 
-## Network Stability 완료 조건
+## Online Flow Completion 완료 조건
+
+- Unity Client가 응답을 받지 못한 Confirm의 RequestId를 보존함
+- 재전송으로 동일 Move가 두 번 적용되지 않음
+- 상대 Preview와 Confirm 상태가 구분됨
+- 실제 Android 기기 두 대에서 한 판 완료
+
+## Match Exit / Timer Stability 완료 조건
+
+- 직접 나가기와 개별 Disconnect가 상대 승리로 한 번만 확정됨
+- 서버 종료 중에는 Player 기권을 만들지 않음
+- Disconnect 기권 Snapshot이 연결된 상대에게 전달됨
+- Timeout과 AFK 정책 통합 테스트 통과
+
+## Post-Launch Reconnect 완료 조건
 
 - 네트워크 전환 후 Grace Period 내 복구
 - 재접속 시 전체 Snapshot 적용
 - 중복 연결과 만료된 ReconnectToken 거부
-- Timeout과 기권 정책 통합 테스트 통과
+- Grace Period 초과 기권 테스트 통과
 
-## Account / Rank 완료 조건
+## Remote Deployment 완료 조건
 
-- Google 계정으로 신규 내부 UserId 생성 및 재로그인 가능
-- 아이디·비밀번호로 회원가입, 로그인 및 로그아웃 가능
-- 동일 외부 계정이 여러 UserId에 중복 연결되지 않음
-- Google 인증 정보가 서버에서 유효하지 않으면 로그인 거부
+- N100 Mini PC에서 Game Server Container 실행
+- 외부 네트워크의 두 Android 기기가 TLS로 접속
+- Health Check 성공
+- 한 판 완료 후 양쪽 최종 Snapshot 일치
+- 재배포 및 이전 Image 복귀 절차 문서화
+
+## Account / Matchmaking / Persistence 완료 조건
+
+- 선택한 로그인 방식 하나로 신규 내부 UserId 생성 및 재로그인 가능
+- 인증 정보가 서버에서 유효하지 않으면 로그인 거부
+- 한 사용자의 중복 Queue 진입 방지
+- 일반전 Matchmaking으로 Match 생성 가능
+- MatchHistory 중복 저장 방지
+
+## Release 완료 조건
+
+- Android Release 빌드 설치 및 실행
+- Google Play Console 내부 테스트 Track에서 AAB 설치 및 실행
+- 선택한 로그인 방식이 실제 기기와 Release 서명 환경에서 동작
+- Google 로그인을 선택한 경우에만 Google Play Games Services 테스트 계정 검증
+- 최소 연습 AI와 한 판 완료 가능
+- 일반전 상대가 없더라도 연습 AI 또는 로컬 2인으로 게임 가능
+- 서버 재배포 절차와 롤백 절차 문서화
+- 로그에 비밀 정보가 남지 않는지 확인
+- 개인정보처리방침과 계정 삭제 정책 준비
+- 알려진 문제와 미구현 범위 공개
+
+## Post-Launch Rank 완료 조건
+
 - 인증되지 않은 사용자의 랭크 요청 거부
 - Match 결과와 Rating의 원자적 저장
 - 무승부 Elo 반영
 - 중복 결과 저장 방지
 - Leaderboard 조회 성능 측정
 
-## Release 완료 조건
+## Post-Launch AI Expansion 완료 조건
 
-- Android Release 빌드 설치 및 실행
-- Google Play Console 내부 테스트 Track에서 AAB 설치 및 실행
-- Google 계정과 자체 계정 로그인 모두 실제 기기에서 검증
-- Google Play Games Services 테스트 계정과 Release 서명 인증서 검증
-- 서버 재배포 절차와 롤백 절차 문서화
-- 로그에 비밀 정보가 남지 않는지 확인
-- 개인정보처리방침과 계정 삭제 정책 준비
-- 알려진 문제와 미구현 범위 공개
+- Easy / Normal / Hard 난이도 구분
+- 즉시 획득, 안전한 Edge와 Chain 판단 검증
+- 제한 시간 안에 유효한 Edge 반환
+- 실제 Android 기기에서 성능과 승률 측정
 
 ---
 
 # 44. 운영 및 관측
 
+운영 기능은 Remote Deployment 이후 단계적으로 추가합니다. 첫 Online Vertical Slice에서는 Match 흐름을 추적할 수 있는 최소 로그만 남깁니다.
+
 ## 44.1 로그
 
-구조화 로그에 다음 식별자를 포함합니다.
+현재 최소 구조화 로그에 다음 식별자를 포함합니다.
 
 ```text
 TimestampUtc
@@ -2014,44 +2202,48 @@ UserId
 MatchId
 RequestId
 Revision
-ConnectionId
+DurationMs
 ```
 
 인증 토큰, 비밀번호, DB 비밀번호는 기록하지 않습니다.
+
+ConnectionId는 Disconnect 추적용으로만 기록하고 User 식별자로 사용하지 않습니다. 재접속 통계와 Rating 로그는 해당 기능이 추가될 때 확장합니다.
 
 주요 EventName 예시:
 
 ```text
 MATCH_CREATED
 PLAYER_JOINED
+PLAYER_DISCONNECTED
+MATCH_FORFEITED
 EDGE_CONFIRMED
 REVISION_MISMATCH
-PLAYER_DISCONNECTED
-PLAYER_RECONNECTED
 MATCH_FINISHED
-MATCH_ABORTED
-RATING_UPDATED
 ```
 
 ## 44.2 상태 확인
 
 - 서버 Process 상태를 확인하는 Health Check
-- DB 연결 상태를 확인하는 Readiness Check
 - SignalR 연결 수
 - 진행 중 Match 수
-- Queue 대기 인원
 - 평균 Match 시간
-- 재접속 성공률
 - 비정상 종료 Match 수
+
+DB Readiness, Queue 대기 인원과 재접속 성공률은 관련 기능 구현 후 추가합니다.
 
 ## 44.3 배포와 백업
 
+Remote Deployment 단계:
+
 - Docker Image에 버전 Tag 사용
-- 배포 전 DB Migration 확인
-- PostgreSQL 정기 백업
 - 정상 배포 전 Queue 진입 중단
 - 진행 중 Match 종료 후 서버 교체
 - 문제 발생 시 이전 Docker Image로 롤백
+
+PostgreSQL 도입 이후:
+
+- 배포 전 DB Migration 확인
+- PostgreSQL 정기 백업
 
 ---
 
@@ -2078,8 +2270,8 @@ RATING_UPDATED
 |---|---|
 | Queue 서버 연결 실패 | 연결을 확인한 뒤 다시 시도하도록 안내 |
 | Revision 불일치 | 최신 게임 상태를 동기화하는 중이라고 표시 |
-| 상대 Disconnect | 상대 재접속 대기 시간 표시 |
-| 본인 Disconnect | 입력을 잠그고 재접속 진행 표시 |
+| 상대 Disconnect | 상대가 나가 승리 처리되었다고 표시 |
+| 본인 Disconnect | 해당 Match가 기권 패배 처리되었음을 메인 메뉴에서 안내 |
 | Match 무효 | Rating이 변경되지 않았음을 명시 |
 | DB 결과 저장 지연 | 결과 확인 중이며 중복 입력이 필요 없음을 안내 |
 
@@ -2091,9 +2283,10 @@ RATING_UPDATED
 |---|---|---|
 | 전체 기능 범위 과다 | 완성도 저하, 일정 지연 | Vertical Slice를 먼저 완료 |
 | 상대 Preview 도배 | UX 방해, 트래픽 증가 | Rate Limit과 Sequence 적용 |
-| Hard AI 탐색 폭발 | 모바일 멈춤, 응답 지연 | 시간 제한, 탐색 깊이, 캐시 적용 |
+| 출시 전에 완성형 AI까지 구현 | 출시 지연 | 최소 연습 AI만 포함하고 고급 AI는 출시 후 개발 |
 | 개인 서버 장애 | 진행 Match 유실 | 무효 경기 정책과 Drain 배포 |
-| 낮은 동시 접속자 | 랭크 매칭 실패 | 초기에는 일반전 중심 테스트, 탐색 범위 조정 |
+| 모바일 순간 단절의 즉시 패배 | 사용자 불만 | 출시 전 명확히 안내하고 Disconnect 비율을 측정한 뒤 재접속 우선순위 결정 |
+| 낮은 동시 접속자 | 온라인 한 판 시작 불가 | 최소 연습 AI, 로컬 2인과 일반전 중심 출시 |
 | 선공/후공 불균형 | 경쟁 공정성 저하 | 승률 데이터 수집 후 정책 결정 |
 | 기능은 많지만 증거 부족 | 포트폴리오 설득력 저하 | 테스트 결과와 수치 기록 |
 | Google 계정과 자체 계정 중복 생성 | 진행 상황 분리, 문의 증가 | 명시적 계정 연결과 자동 병합 금지 |
@@ -2114,7 +2307,8 @@ RATING_UPDATED
 - Google 계정 및 자체 계정 로그인 흐름 영상
 - Client, Server, DB 관계를 보여주는 아키텍처 다이어그램
 - 한 Turn의 Preview와 Confirm Sequence Diagram
-- 재접속 Sequence Diagram
+- Disconnect 기권 Sequence Diagram
+- Post-Launch 재접속 설계 문서
 - 게임 규칙 단위 테스트 결과
 - 서버 통합 및 부하 테스트 결과
 - Docker 배포 구성과 운영 화면

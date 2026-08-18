@@ -9,7 +9,7 @@ namespace DotsAndBoxes.Shared
         public int SchemaVersion { get; set; } = CURRENT_SCHEMA_VERSION;
         public Guid MatchId { get; set; }
         public long Revision { get; set; }
-        public SERVER_MATCH_STATE_ENUM MatchState { get; set; }
+        public SERVER_MATCH_STATE_ENUM MatchState { get; set; } = SERVER_MATCH_STATE_ENUM.NONE;
 
         public Guid PlayerOneUserId { get; set; }
         public Guid PlayerTwoUserId { get; set; }
@@ -21,8 +21,6 @@ namespace DotsAndBoxes.Shared
         public int PlayerOneScore { get; set; }
         public int PlayerTwoScore { get; set; }
 
-        public DateTimeOffset? TurnDeadlineUtc { get; set; }
         public GAME_RESULT_ENUM GameResult { get; set; } = GAME_RESULT_ENUM.IN_PROGRESS;
-        public MATCH_FINISH_REASON_ENUM FinishReason { get; set; } = MATCH_FINISH_REASON_ENUM.NONE;
     }
 }

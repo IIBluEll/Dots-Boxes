@@ -6,9 +6,6 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomIdempotencyTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
         public async Task ConfirmEdge_WithSameRequest_ReturnsCachedResponse()
         {
@@ -117,20 +114,60 @@ namespace DotsAndBoxes.Server.Tests.Matches
             });
         }
 
+        [Test]
+        public async Task ConfirmEdge_AfterManyRejectedRequests_AllowsValidRequest()
+        {
+            MatchRoom room = CreateRoom();
+
+            for ( int requestIndex = 0; requestIndex < 200; requestIndex++ )
+            {
+                ConfirmEdgeRequest rejectedRequest =
+                    CreateRequest(
+                        room.MatchId,
+                        0,
+                        999,
+                        Guid.NewGuid());
+
+                ConfirmEdgeResponse rejectedResponse =
+                    await room.ConfirmEdge_async(
+                        room.PlayerOne.UserId,
+                        rejectedRequest);
+
+                Assert.That(rejectedResponse.IsAccepted , Is.False);
+            }
+
+            ConfirmEdgeRequest validRequest =
+                CreateRequest(
+                    room.MatchId,
+                    0,
+                    room.Revision,
+                    Guid.NewGuid());
+
+            ConfirmEdgeResponse validResponse =
+                await room.ConfirmEdge_async(
+                    room.PlayerOne.UserId,
+                    validRequest);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(validResponse.IsAccepted , Is.True);
+                Assert.That(room.Revision , Is.EqualTo(1));
+            });
+        }
+
         private static MatchRoom CreateRoom()
         {
             MatchPlayer playerOne =
-                new MatchPlayer(Guid.NewGuid(), "connection-one");
+                new MatchPlayer(Guid.NewGuid());
 
             MatchPlayer playerTwo =
-                new MatchPlayer(Guid.NewGuid(), "connection-two");
+                new MatchPlayer(Guid.NewGuid());
 
             return new MatchRoom(
                 Guid.NewGuid() ,
                 playerOne ,
                 playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                TURN_DEADLINE_UTC);
+                PLAYER_INDEX_ENUM.PLAYER_ONE);
         }
 
         private static ConfirmEdgeRequest CreateRequest(

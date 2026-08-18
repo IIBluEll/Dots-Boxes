@@ -107,9 +107,7 @@ namespace DotsAndBoxes.Gameplay.Tests
                 BoxOwners = CreateEmptyOwners(BoardTopology.BOX_COUNT) ,
                 PlayerOneScore = 0 ,
                 PlayerTwoScore = 0 ,
-                TurnDeadlineUtc = DateTimeOffset.UtcNow.AddSeconds(20) ,
-                GameResult = GAME_RESULT_ENUM.IN_PROGRESS ,
-                FinishReason = MATCH_FINISH_REASON_ENUM.NONE
+                GameResult = GAME_RESULT_ENUM.IN_PROGRESS
             };
         }
 

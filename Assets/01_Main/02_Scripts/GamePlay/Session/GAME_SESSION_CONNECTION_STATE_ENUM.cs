@@ -5,7 +5,6 @@ namespace DotsAndBoxes.Gameplay
         DISCONNECTED = 0,
         CONNECTING = 1,
         CONNECTED = 2,
-        RECONNECTING = 3,
-        FAULTED = 4
+        FAULTED = 3
     }
 }

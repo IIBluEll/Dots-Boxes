@@ -8,14 +8,6 @@ namespace DotsAndBoxes.Gameplay
 {
     public sealed class SignalRGameSession : IGameSession
     {
-        private static readonly TimeSpan[] RECONNECT_DELAYS =
-        {
-            TimeSpan.Zero,
-            TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(8)
-        };
-
         private readonly GameSessionSnapshotStore SNAPSHOT_STORE = new GameSessionSnapshotStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
@@ -116,9 +108,7 @@ namespace DotsAndBoxes.Gameplay
 
             string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
 
-            _connection = new HubConnectionBuilder().WithUrl(hubUrl).WithAutomaticReconnect(RECONNECT_DELAYS).Build();
-            _connection.Reconnecting += OnConnectionReconnecting;
-            _connection.Reconnected += OnConnectionReconnected_async;
+            _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
             _connection.Closed += OnConnectionClosed;
 
             _matchStateChangedSubscription = _connection.On<MatchSnapshot>("MatchStateChanged" , OnMatchStateChanged);
@@ -218,46 +208,6 @@ namespace DotsAndBoxes.Gameplay
             ReceiveSnapshot(snapshot);
         }
 
-        private Task OnConnectionReconnecting(Exception exception)
-        {
-            if ( !_isDisposed )
-            {
-                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.RECONNECTING);
-            }
-
-            return Task.CompletedTask;
-        }
-
-        private async Task OnConnectionReconnected_async(string connectionId)
-        {
-            if ( _isDisposed )
-            {
-                return;
-            }
-
-            try
-            {
-                MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>("JoinMatch" , MatchId);
-
-                if ( _isDisposed )
-                {
-                    return;
-                }
-
-                _isStarted = true;
-                ReceiveSnapshot(snapshot);
-                SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED);
-            }
-            catch
-            {
-                if ( !_isDisposed )
-                {
-                    _isStarted = false;
-                    SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED);
-                }
-            }
-        }
-
         private Task OnConnectionClosed(Exception exception)
         {
             if ( _isDisposed )
@@ -330,8 +280,6 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            connection.Reconnecting -= OnConnectionReconnecting;
-            connection.Reconnected -= OnConnectionReconnected_async;
             connection.Closed -= OnConnectionClosed;
 
             try

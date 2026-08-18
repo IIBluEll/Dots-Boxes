@@ -6,9 +6,6 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomProviderTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
         public void TryAdd_WithNewMatch_AddsRoom()
         {
@@ -102,17 +99,16 @@ namespace DotsAndBoxes.Server.Tests.Matches
         private static MatchRoom CreateRoom(Guid? matchId = null)
         {
             MatchPlayer playerOne =
-                new MatchPlayer(Guid.NewGuid(), "connection-one");
+                new MatchPlayer(Guid.NewGuid());
 
             MatchPlayer playerTwo =
-                new MatchPlayer(Guid.NewGuid(), "connection-two");
+                new MatchPlayer(Guid.NewGuid());
 
             return new MatchRoom(
                 matchId ?? Guid.NewGuid() ,
                 playerOne ,
                 playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                TURN_DEADLINE_UTC);
+                PLAYER_INDEX_ENUM.PLAYER_ONE);
         }
     }
 }

@@ -7,9 +7,6 @@ namespace DotsAndBoxes.Server.Tests.Matches
     [TestFixture]
     public sealed class MatchRoomConfirmEdgeTests
     {
-        private static readonly DateTimeOffset TURN_DEADLINE_UTC =
-            new DateTimeOffset(2030, 1, 1, 0, 0, 20, TimeSpan.Zero);
-
         [Test]
         public async Task ConfirmEdge_WithValidRequest_ConfirmsEdgeAndIncreasesRevision()
         {
@@ -177,15 +174,14 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
         private static MatchRoom CreateRoom()
         {
-            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid(), "connection-one");
-            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid(), "connection-two");
+            MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid());
+            MatchPlayer playerTwo = new MatchPlayer(Guid.NewGuid());
 
             return new MatchRoom(
                 Guid.NewGuid() ,
                 playerOne ,
                 playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                TURN_DEADLINE_UTC);
+                PLAYER_INDEX_ENUM.PLAYER_ONE);
         }
 
         private static ConfirmEdgeRequest CreateRequest(

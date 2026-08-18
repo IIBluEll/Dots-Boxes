@@ -63,19 +63,6 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
-        public MATCH_FINISH_REASON_ENUM FinishReason
-        {
-            get
-            {
-                if ( HasServerSnapshot )
-                {
-                    return _currentSnapshot.FinishReason;
-                }
-
-                return Board.IsGameFinished ? MATCH_FINISH_REASON_ENUM.BOARD_COMPLETED : MATCH_FINISH_REASON_ENUM.NONE;
-            }
-        }
-
         public bool CanSelectEdge => MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE;
         public bool IsGameFinished => MatchState == SERVER_MATCH_STATE_ENUM.FINISHED;
 

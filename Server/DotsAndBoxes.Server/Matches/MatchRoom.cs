@@ -7,14 +7,11 @@ namespace DotsAndBoxes.Server.Matches
 {
     public sealed class MatchRoom
     {
-        private const int MAX_PROCESSED_REQUEST_COUNT = 128;
-
         private readonly DotsBoard BOARD;
         private readonly SemaphoreSlim COMMAND_LOCK = new SemaphoreSlim(1, 1);
         private readonly Dictionary<Guid, ProcessedConfirmRequest> PROCESSED_CONFIRM_REQUESTS = new Dictionary<Guid, ProcessedConfirmRequest>();
 
         private GAME_RESULT_ENUM _gameResult;
-        private MATCH_FINISH_REASON_ENUM _finishReason;
 
         public Guid MatchId { get; }
         public MatchPlayer PlayerOne { get; }
@@ -22,13 +19,11 @@ namespace DotsAndBoxes.Server.Matches
 
         public long Revision { get; private set; }
         public SERVER_MATCH_STATE_ENUM MatchState { get; private set; }
-        public DateTimeOffset? TurnDeadlineUtc { get; private set; }
 
         public PLAYER_INDEX_ENUM CurrentPlayerIndex => BOARD.CurrentPlayerIndex;
         public GAME_RESULT_ENUM GameResult => _gameResult;
-        public MATCH_FINISH_REASON_ENUM FinishReason => _finishReason;
 
-        public MatchRoom(Guid matchId , MatchPlayer playerOne , MatchPlayer playerTwo , PLAYER_INDEX_ENUM startingPlayerIndex , DateTimeOffset turnDeadlineUtc)
+        public MatchRoom(Guid matchId , MatchPlayer playerOne , MatchPlayer playerTwo , PLAYER_INDEX_ENUM startingPlayerIndex)
         {
             if ( matchId == Guid.Empty )
             {
@@ -53,10 +48,7 @@ namespace DotsAndBoxes.Server.Matches
 
             Revision = 0;
             MatchState = SERVER_MATCH_STATE_ENUM.ACTIVE;
-            TurnDeadlineUtc = turnDeadlineUtc.ToUniversalTime();
-
             _gameResult = GAME_RESULT_ENUM.IN_PROGRESS;
-            _finishReason = MATCH_FINISH_REASON_ENUM.NONE;
         }
 
         public bool TryGetPlayerIndex(Guid userId , out PLAYER_INDEX_ENUM playerIndex)
@@ -142,31 +134,22 @@ namespace DotsAndBoxes.Server.Matches
                     CreateSnapshotLocked());
             }
 
-            if ( PROCESSED_CONFIRM_REQUESTS.Count >= MAX_PROCESSED_REQUEST_COUNT )
+            if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
             {
                 return ConfirmEdgeResponseFactory.CreateFailure(
                     request.RequestId ,
-                    MATCH_COMMAND_ERROR_ENUM.RATE_LIMITED ,
+                    MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE ,
                     false ,
                     CreateSnapshotLocked());
             }
 
-            if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
-            {
-                return CreateAndCacheFailure(
-                    userId ,
-                    request ,
-                    MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE ,
-                    false);
-            }
-
             if ( request.ExpectedRevision != Revision )
             {
-                return CreateAndCacheFailure(
-                    userId ,
-                    request ,
+                return ConfirmEdgeResponseFactory.CreateFailure(
+                    request.RequestId ,
                     MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH ,
-                    true);
+                    true ,
+                    CreateSnapshotLocked());
             }
 
             MoveResult moveResult = DotsRule.TryConfirmEdge(BOARD, playerIndex, request.EdgeId);
@@ -175,27 +158,22 @@ namespace DotsAndBoxes.Server.Matches
             {
                 MATCH_COMMAND_ERROR_ENUM commandError = MatchCommandErrorMapper.ToMatchCommandError(moveResult.Error);
 
-                return CreateAndCacheFailure(userId , request , commandError , false);
+                return ConfirmEdgeResponseFactory.CreateFailure(
+                    request.RequestId ,
+                    commandError ,
+                    false ,
+                    CreateSnapshotLocked());
             }
 
             Revision++;
 
             if ( moveResult.IsGameFinished )
             {
-                MatchState = SERVER_MATCH_STATE_ENUM.FINISHING;
-                TurnDeadlineUtc = null;
+                MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
                 _gameResult = BOARD.GameResult;
-                _finishReason = MATCH_FINISH_REASON_ENUM.BOARD_COMPLETED;
             }
 
             ConfirmEdgeResponse response = ConfirmEdgeResponseFactory.CreateSuccess(request.RequestId, CreateSnapshotLocked());
-
-            return CacheResponse(userId , request , response);
-        }
-
-        private ConfirmEdgeResponse CreateAndCacheFailure(Guid userId , ConfirmEdgeRequest request , MATCH_COMMAND_ERROR_ENUM error , bool shouldRequestSync)
-        {
-            ConfirmEdgeResponse response = ConfirmEdgeResponseFactory.CreateFailure(request.RequestId, error, shouldRequestSync, CreateSnapshotLocked());
 
             return CacheResponse(userId , request , response);
         }
@@ -238,9 +216,7 @@ namespace DotsAndBoxes.Server.Matches
                 PlayerOneScore = BOARD.PlayerOneScore ,
                 PlayerTwoScore = BOARD.PlayerTwoScore ,
 
-                TurnDeadlineUtc = TurnDeadlineUtc ,
-                GameResult = _gameResult ,
-                FinishReason = _finishReason
+                GameResult = _gameResult
             };
         }
 
@@ -250,6 +226,34 @@ namespace DotsAndBoxes.Server.Matches
 
             try
             {
+                return CreateSnapshotLocked();
+            }
+            finally
+            {
+                COMMAND_LOCK.Release();
+            }
+        }
+
+        public async Task<MatchSnapshot?> TryForfeit_async(
+            Guid userId ,
+            CancellationToken cancellationToken = default)
+        {
+            await COMMAND_LOCK.WaitAsync(cancellationToken);
+
+            try
+            {
+                if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE ||
+                     !TryGetPlayerIndex(userId , out PLAYER_INDEX_ENUM playerIndex) )
+                {
+                    return null;
+                }
+
+                MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
+                _gameResult = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                    ? GAME_RESULT_ENUM.PLAYER_TWO_WIN
+                    : GAME_RESULT_ENUM.PLAYER_ONE_WIN;
+
+                Revision++;
                 return CreateSnapshotLocked();
             }
             finally

@@ -244,6 +244,28 @@ Ensure(
         staleRevisionSnapshot.Revision ,
     "RequestSync 결과가 서버 최신 Revision과 일치하지 않습니다.");
 
+playerTwoBroadcast =
+    new TaskCompletionSource<MatchSnapshot>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+await playerOneConnection.StopAsync();
+
+MatchSnapshot disconnectSnapshot =
+    await playerTwoBroadcast.Task.WaitAsync(
+        TimeSpan.FromSeconds(5));
+
+Ensure(
+    disconnectSnapshot.Revision == 2 ,
+    "Disconnect 기권 후 Revision이 2가 아닙니다.");
+
+Ensure(
+    disconnectSnapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED ,
+    "Disconnect 기권 후 Match가 종료되지 않았습니다.");
+
+Ensure(
+    disconnectSnapshot.GameResult == GAME_RESULT_ENUM.PLAYER_TWO_WIN ,
+    "Player 1 Disconnect가 Player 2 승리로 처리되지 않았습니다.");
+
 Console.WriteLine("SignalR 통합 검증 성공");
 Console.WriteLine($"MatchId: {developmentMatch.MatchId}");
 Console.WriteLine("Revision: 0 → 1");
@@ -253,6 +275,7 @@ Console.WriteLine("Player 2 RequestSync 검증: 성공");
 Console.WriteLine("동일 RequestId 재전송 검증: 성공");
 Console.WriteLine("RequestId 충돌 거부 검증: 성공");
 Console.WriteLine("Revision 불일치 복구 검증: 성공");
+Console.WriteLine("Disconnect 기권 및 상대 승리 검증: 성공");
 
 static HubConnection CreateConnection(
     string hubPath ,
@@ -263,7 +286,6 @@ static HubConnection CreateConnection(
 
     return new HubConnectionBuilder()
         .WithUrl(connectionUrl)
-        .WithAutomaticReconnect()
         .Build();
 }
 

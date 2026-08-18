@@ -174,9 +174,7 @@ namespace DotsAndBoxes.Gameplay
                 BoxOwners = boxOwners ,
                 PlayerOneScore = BOARD.PlayerOneScore ,
                 PlayerTwoScore = BOARD.PlayerTwoScore ,
-                TurnDeadlineUtc = null ,
-                GameResult = BOARD.GameResult ,
-                FinishReason = BOARD.IsGameFinished ? MATCH_FINISH_REASON_ENUM.BOARD_COMPLETED : MATCH_FINISH_REASON_ENUM.NONE
+                GameResult = BOARD.GameResult
             };
         }
 

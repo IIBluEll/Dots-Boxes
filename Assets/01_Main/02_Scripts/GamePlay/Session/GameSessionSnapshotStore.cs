@@ -129,10 +129,10 @@ namespace DotsAndBoxes.Gameplay
             }
 
             if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
-                snapshot.FinishReason != MATCH_FINISH_REASON_ENUM.NONE )
+                snapshot.GameResult != GAME_RESULT_ENUM.IN_PROGRESS )
             {
                 throw new InvalidOperationException(
-                    "ACTIVE Match에는 종료 원인이 존재할 수 없습니다.");
+                    "ACTIVE Match의 결과는 IN_PROGRESS여야 합니다.");
             }
 
             if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED &&
@@ -180,9 +180,7 @@ namespace DotsAndBoxes.Gameplay
                 BoxOwners = (PLAYER_INDEX_ENUM[])snapshot.BoxOwners.Clone() ,
                 PlayerOneScore = snapshot.PlayerOneScore ,
                 PlayerTwoScore = snapshot.PlayerTwoScore ,
-                TurnDeadlineUtc = snapshot.TurnDeadlineUtc ,
-                GameResult = snapshot.GameResult ,
-                FinishReason = snapshot.FinishReason
+                GameResult = snapshot.GameResult
             };
         }
     }

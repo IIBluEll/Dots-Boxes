@@ -152,10 +152,6 @@ namespace DotsAndBoxes.Gameplay
                     _connectionStateTxt.text = "CONNECTED";
                     break;
 
-                case GAME_SESSION_CONNECTION_STATE_ENUM.RECONNECTING:
-                    _connectionStateTxt.text = "RECONNECTING...";
-                    break;
-
                 case GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED:
                     _connectionStateTxt.text = "CONNECTION FAILED";
                     break;

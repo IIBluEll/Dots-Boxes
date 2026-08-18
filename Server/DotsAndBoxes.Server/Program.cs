@@ -6,6 +6,7 @@ using DotsAndBoxes.Server.Hubs;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<MatchRoomProvider>();
+builder.Services.AddSingleton<MatchConnectionRegistry>();
 builder.Services.AddSignalR();
 
 WebApplication app = builder.Build();
@@ -20,17 +21,16 @@ if ( app.Environment.IsDevelopment() )
         Guid playerTwoUserId = Guid.NewGuid();
 
         MatchPlayer playerOne =
-            new MatchPlayer(playerOneUserId, "development-player-one");
+            new MatchPlayer(playerOneUserId);
 
         MatchPlayer playerTwo =
-            new MatchPlayer(playerTwoUserId, "development-player-two");
+            new MatchPlayer(playerTwoUserId);
 
         MatchRoom matchRoom = new MatchRoom(
             Guid.NewGuid(),
             playerOne,
             playerTwo,
-            PLAYER_INDEX_ENUM.PLAYER_ONE,
-            DateTimeOffset.UtcNow.AddSeconds(20));
+            PLAYER_INDEX_ENUM.PLAYER_ONE);
 
         if ( !matchRoomProvider.TryAdd(matchRoom) )
         {

@@ -7,11 +7,22 @@ namespace DotsAndBoxes.Server.Hubs
     public sealed class GameHub : Hub<IGameClient>
     {
         private readonly MatchRoomProvider MATCH_ROOM_PROVIDER;
+        private readonly MatchConnectionRegistry MATCH_CONNECTION_REGISTRY;
+        private readonly IHostApplicationLifetime APPLICATION_LIFETIME;
 
-        public GameHub(MatchRoomProvider matchRoomProvider)
+        public GameHub(
+            MatchRoomProvider matchRoomProvider ,
+            MatchConnectionRegistry matchConnectionRegistry ,
+            IHostApplicationLifetime applicationLifetime)
         {
             MATCH_ROOM_PROVIDER = matchRoomProvider ??
                 throw new ArgumentNullException(nameof(matchRoomProvider));
+
+            MATCH_CONNECTION_REGISTRY = matchConnectionRegistry ??
+                throw new ArgumentNullException(nameof(matchConnectionRegistry));
+
+            APPLICATION_LIFETIME = applicationLifetime ??
+                throw new ArgumentNullException(nameof(applicationLifetime));
         }
 
         public async Task<MatchSnapshot> JoinMatch(Guid matchId)
@@ -23,13 +34,62 @@ namespace DotsAndBoxes.Server.Hubs
 
             MatchRoom matchRoom = GetParticipantRoom(matchId, userId);
 
-            await Groups.AddToGroupAsync(
+            if ( !MATCH_CONNECTION_REGISTRY.TryRegister(
                 Context.ConnectionId ,
-                CreateMatchGroupName(matchId) ,
-                Context.ConnectionAborted);
+                matchId ,
+                userId) )
+            {
+                throw new HubException("이미 활성화된 Match 연결이 있습니다.");
+            }
 
-            return await matchRoom.CreateSnapshot_async(
-                Context.ConnectionAborted);
+            try
+            {
+                await Groups.AddToGroupAsync(
+                    Context.ConnectionId ,
+                    CreateMatchGroupName(matchId) ,
+                    Context.ConnectionAborted);
+
+                return await matchRoom.CreateSnapshot_async(
+                    Context.ConnectionAborted);
+            }
+            catch
+            {
+                MATCH_CONNECTION_REGISTRY.TryRemove(
+                    Context.ConnectionId ,
+                    out _ ,
+                    out _);
+
+                throw;
+            }
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            try
+            {
+                if ( MATCH_CONNECTION_REGISTRY.TryRemove(
+                        Context.ConnectionId ,
+                        out Guid matchId ,
+                        out Guid userId) &&
+                     !APPLICATION_LIFETIME.ApplicationStopping.IsCancellationRequested &&
+                     MATCH_ROOM_PROVIDER.TryGet(matchId , out MatchRoom? matchRoom) &&
+                     matchRoom != null )
+                {
+                    MatchSnapshot? finalSnapshot =
+                        await matchRoom.TryForfeit_async(userId);
+
+                    if ( finalSnapshot != null )
+                    {
+                        await Clients
+                            .Group(CreateMatchGroupName(matchId))
+                            .MatchStateChanged(finalSnapshot);
+                    }
+                }
+            }
+            finally
+            {
+                await base.OnDisconnectedAsync(exception);
+            }
         }
 
         public async Task<ConfirmEdgeResponse> ConfirmEdge(
