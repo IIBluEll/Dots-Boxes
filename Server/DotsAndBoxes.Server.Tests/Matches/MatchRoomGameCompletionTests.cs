@@ -10,7 +10,8 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public async Task ConfirmEdge_ThroughFullBoard_FinishesMatchAsDraw()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
             {
@@ -60,7 +61,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
 
             Assert.Multiple(() =>
             {
-                Assert.That(finalSnapshot.Revision , Is.EqualTo(BoardTopology.EDGE_COUNT));
+                Assert.That(finalSnapshot.Revision , Is.EqualTo(initialRevision + BoardTopology.EDGE_COUNT));
                 Assert.That(confirmedEdgeCount , Is.EqualTo(BoardTopology.EDGE_COUNT));
                 Assert.That(ownedBoxCount , Is.EqualTo(BoardTopology.BOX_COUNT));
 
@@ -77,23 +78,13 @@ namespace DotsAndBoxes.Server.Tests.Matches
                     afterFinishResponse.Error ,
                     Is.EqualTo(MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE));
 
-                Assert.That(room.Revision , Is.EqualTo(BoardTopology.EDGE_COUNT));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + BoardTopology.EDGE_COUNT));
             });
         }
 
-        private static MatchRoom CreateRoom()
+        private static Task<MatchRoom> CreateRoom_async()
         {
-            MatchPlayer playerOne =
-                new MatchPlayer(Guid.NewGuid());
-
-            MatchPlayer playerTwo =
-                new MatchPlayer(Guid.NewGuid());
-
-            return new MatchRoom(
-                Guid.NewGuid() ,
-                playerOne ,
-                playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE);
+            return ActiveMatchRoomTestFactory.Create_async();
         }
     }
 }

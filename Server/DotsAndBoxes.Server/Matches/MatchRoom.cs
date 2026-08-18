@@ -14,8 +14,13 @@ namespace DotsAndBoxes.Server.Matches
         private readonly int MAX_TIMEOUTS_PER_PLAYER;
         private readonly Func<DateTimeOffset> UTC_NOW_PROVIDER;
         private readonly Random RANDOM;
+        private readonly TimeSpan JOIN_TIMEOUT;
+        private readonly TimeSpan READY_TIMEOUT;
+        private readonly TimeSpan START_COUNTDOWN;
 
         private GAME_RESULT_ENUM _gameResult;
+        private bool _isPlayerOneJoined;
+        private bool _isPlayerTwoJoined;
 
         public Guid MatchId { get; }
         public MatchPlayer PlayerOne { get; }
@@ -26,6 +31,11 @@ namespace DotsAndBoxes.Server.Matches
         public DateTimeOffset? TurnDeadlineUtc { get; private set; }
         public int PlayerOneTimeoutCount { get; private set; }
         public int PlayerTwoTimeoutCount { get; private set; }
+        public bool PlayerOneReady { get; private set; }
+        public bool PlayerTwoReady { get; private set; }
+        public DateTimeOffset? JoinDeadlineUtc { get; private set; }
+        public DateTimeOffset? ReadyDeadlineUtc { get; private set; }
+        public DateTimeOffset? MatchStartUtc { get; private set; }
 
         public PLAYER_INDEX_ENUM CurrentPlayerIndex => BOARD.CurrentPlayerIndex;
         public GAME_RESULT_ENUM GameResult => _gameResult;
@@ -38,7 +48,10 @@ namespace DotsAndBoxes.Server.Matches
             TimeSpan? turnDuration = null ,
             int maxTimeoutsPerPlayer = 3 ,
             Func<DateTimeOffset>? utcNowProvider = null ,
-            Random? random = null)
+            Random? random = null ,
+            TimeSpan? joinTimeout = null ,
+            TimeSpan? readyTimeout = null ,
+            TimeSpan? startCountdown = null)
         {
             if ( matchId == Guid.Empty )
             {
@@ -59,6 +72,9 @@ namespace DotsAndBoxes.Server.Matches
             }
 
             TimeSpan resolvedTurnDuration = turnDuration ?? TimeSpan.FromSeconds(20);
+            TimeSpan resolvedJoinTimeout = joinTimeout ?? TimeSpan.FromSeconds(10);
+            TimeSpan resolvedReadyTimeout = readyTimeout ?? TimeSpan.FromSeconds(15);
+            TimeSpan resolvedStartCountdown = startCountdown ?? TimeSpan.FromSeconds(3);
 
             if ( resolvedTurnDuration <= TimeSpan.Zero )
             {
@@ -70,17 +86,35 @@ namespace DotsAndBoxes.Server.Matches
                 throw new ArgumentOutOfRangeException(nameof(maxTimeoutsPerPlayer));
             }
 
+            if ( resolvedJoinTimeout <= TimeSpan.Zero )
+            {
+                throw new ArgumentOutOfRangeException(nameof(joinTimeout));
+            }
+
+            if ( resolvedReadyTimeout <= TimeSpan.Zero )
+            {
+                throw new ArgumentOutOfRangeException(nameof(readyTimeout));
+            }
+
+            if ( resolvedStartCountdown <= TimeSpan.Zero )
+            {
+                throw new ArgumentOutOfRangeException(nameof(startCountdown));
+            }
+
             MatchId = matchId;
             BOARD = new DotsBoard(startingPlayerIndex);
             TURN_DURATION = resolvedTurnDuration;
             MAX_TIMEOUTS_PER_PLAYER = maxTimeoutsPerPlayer;
             UTC_NOW_PROVIDER = utcNowProvider ?? (() => DateTimeOffset.UtcNow);
             RANDOM = random ?? new Random();
+            JOIN_TIMEOUT = resolvedJoinTimeout;
+            READY_TIMEOUT = resolvedReadyTimeout;
+            START_COUNTDOWN = resolvedStartCountdown;
 
             Revision = 0;
-            MatchState = SERVER_MATCH_STATE_ENUM.ACTIVE;
+            MatchState = SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS;
             _gameResult = GAME_RESULT_ENUM.IN_PROGRESS;
-            TurnDeadlineUtc = UTC_NOW_PROVIDER() + TURN_DURATION;
+            JoinDeadlineUtc = UTC_NOW_PROVIDER() + JOIN_TIMEOUT;
         }
 
         public bool TryGetPlayerIndex(Guid userId , out PLAYER_INDEX_ENUM playerIndex)
@@ -99,6 +133,132 @@ namespace DotsAndBoxes.Server.Matches
 
             playerIndex = PLAYER_INDEX_ENUM.NONE;
             return false;
+        }
+
+        public async Task<MatchRoomUpdateResult> MarkPlayerJoined_async(
+            Guid userId ,
+            CancellationToken cancellationToken = default)
+        {
+            await COMMAND_LOCK.WaitAsync(cancellationToken);
+
+            try
+            {
+                if ( !TryGetPlayerIndex(userId , out PLAYER_INDEX_ENUM playerIndex) )
+                {
+                    throw new InvalidOperationException("Match 참가자가 아닙니다.");
+                }
+
+                if ( IsTerminalState(MatchState) )
+                {
+                    throw new InvalidOperationException("이미 종료된 Match에는 참가할 수 없습니다.");
+                }
+
+                bool wasAlreadyJoined = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                    ? _isPlayerOneJoined
+                    : _isPlayerTwoJoined;
+
+                if ( wasAlreadyJoined )
+                {
+                    return new MatchRoomUpdateResult(false , CreateSnapshotLocked());
+                }
+
+                if ( playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE )
+                {
+                    _isPlayerOneJoined = true;
+                }
+                else
+                {
+                    _isPlayerTwoJoined = true;
+                }
+
+                bool hasStateChanged = false;
+
+                if ( _isPlayerOneJoined &&
+                     _isPlayerTwoJoined &&
+                     MatchState == SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS )
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY;
+                    JoinDeadlineUtc = null;
+                    ReadyDeadlineUtc = UTC_NOW_PROVIDER() + READY_TIMEOUT;
+                    Revision++;
+                    hasStateChanged = true;
+                }
+
+                return new MatchRoomUpdateResult(
+                    hasStateChanged ,
+                    CreateSnapshotLocked());
+            }
+            finally
+            {
+                COMMAND_LOCK.Release();
+            }
+        }
+
+        public async Task<MatchRoomUpdateResult> MarkPlayerReady_async(
+            Guid userId ,
+            CancellationToken cancellationToken = default)
+        {
+            await COMMAND_LOCK.WaitAsync(cancellationToken);
+
+            try
+            {
+                if ( !TryGetPlayerIndex(userId , out PLAYER_INDEX_ENUM playerIndex) )
+                {
+                    throw new InvalidOperationException("Match 참가자가 아닙니다.");
+                }
+
+                bool isJoined = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                    ? _isPlayerOneJoined
+                    : _isPlayerTwoJoined;
+
+                if ( !isJoined )
+                {
+                    throw new InvalidOperationException("JoinMatch가 완료되지 않은 참가자입니다.");
+                }
+
+                bool wasAlreadyReady = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                    ? PlayerOneReady
+                    : PlayerTwoReady;
+
+                if ( wasAlreadyReady )
+                {
+                    return new MatchRoomUpdateResult(false , CreateSnapshotLocked());
+                }
+
+                if ( MatchState != SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS &&
+                     MatchState != SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY )
+                {
+                    throw new InvalidOperationException("현재 Match 상태에서는 Ready를 처리할 수 없습니다.");
+                }
+
+                if ( playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE )
+                {
+                    PlayerOneReady = true;
+                }
+                else
+                {
+                    PlayerTwoReady = true;
+                }
+
+                if ( _isPlayerOneJoined &&
+                     _isPlayerTwoJoined &&
+                     PlayerOneReady &&
+                     PlayerTwoReady )
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.STARTING;
+                    JoinDeadlineUtc = null;
+                    ReadyDeadlineUtc = null;
+                    MatchStartUtc = UTC_NOW_PROVIDER() + START_COUNTDOWN;
+                }
+
+                Revision++;
+
+                return new MatchRoomUpdateResult(true , CreateSnapshotLocked());
+            }
+            finally
+            {
+                COMMAND_LOCK.Release();
+            }
         }
 
         public async Task<ConfirmEdgeResponse> ConfirmEdge_async(
@@ -247,6 +407,12 @@ namespace DotsAndBoxes.Server.Matches
                 PlayerTwoUserId = PlayerTwo.UserId ,
                 CurrentPlayerIndex = BOARD.CurrentPlayerIndex ,
 
+                PlayerOneReady = PlayerOneReady ,
+                PlayerTwoReady = PlayerTwoReady ,
+                JoinDeadlineUtc = JoinDeadlineUtc ,
+                ReadyDeadlineUtc = ReadyDeadlineUtc ,
+                MatchStartUtc = MatchStartUtc ,
+
                 EdgeOwners = edgeOwners ,
                 BoxOwners = boxOwners ,
 
@@ -275,7 +441,7 @@ namespace DotsAndBoxes.Server.Matches
             }
         }
 
-        public async Task<MatchSnapshot?> TryForfeit_async(
+        public async Task<MatchSnapshot?> TryHandlePlayerExit_async(
             Guid userId ,
             CancellationToken cancellationToken = default)
         {
@@ -283,17 +449,28 @@ namespace DotsAndBoxes.Server.Matches
 
             try
             {
-                if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE ||
+                if ( IsTerminalState(MatchState) ||
                      !TryGetPlayerIndex(userId , out PLAYER_INDEX_ENUM playerIndex) )
                 {
                     return null;
                 }
 
-                MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
-                _gameResult = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
-                    ? GAME_RESULT_ENUM.PLAYER_TWO_WIN
-                    : GAME_RESULT_ENUM.PLAYER_ONE_WIN;
+                if ( MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE )
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.FINISHED;
+                    _gameResult = playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                        ? GAME_RESULT_ENUM.PLAYER_TWO_WIN
+                        : GAME_RESULT_ENUM.PLAYER_ONE_WIN;
+                }
+                else
+                {
+                    MatchState = SERVER_MATCH_STATE_ENUM.CANCELLED;
+                    _gameResult = GAME_RESULT_ENUM.IN_PROGRESS;
+                    MatchStartUtc = null;
+                }
 
+                JoinDeadlineUtc = null;
+                ReadyDeadlineUtc = null;
                 TurnDeadlineUtc = null;
                 Revision++;
                 return CreateSnapshotLocked();
@@ -304,7 +481,7 @@ namespace DotsAndBoxes.Server.Matches
             }
         }
 
-        public async Task<MatchSnapshot?> TryHandleTurnTimeout_async(
+        public async Task<MatchSnapshot?> TryAdvanceClock_async(
             DateTimeOffset utcNow ,
             CancellationToken cancellationToken = default)
         {
@@ -312,6 +489,40 @@ namespace DotsAndBoxes.Server.Matches
 
             try
             {
+                if ( MatchState == SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS )
+                {
+                    if ( !JoinDeadlineUtc.HasValue || utcNow < JoinDeadlineUtc.Value )
+                    {
+                        return null;
+                    }
+
+                    return CancelMatchLocked();
+                }
+
+                if ( MatchState == SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY )
+                {
+                    if ( !ReadyDeadlineUtc.HasValue || utcNow < ReadyDeadlineUtc.Value )
+                    {
+                        return null;
+                    }
+
+                    return CancelMatchLocked();
+                }
+
+                if ( MatchState == SERVER_MATCH_STATE_ENUM.STARTING )
+                {
+                    if ( !MatchStartUtc.HasValue || utcNow < MatchStartUtc.Value )
+                    {
+                        return null;
+                    }
+
+                    MatchState = SERVER_MATCH_STATE_ENUM.ACTIVE;
+                    TurnDeadlineUtc = MatchStartUtc.Value + TURN_DURATION;
+                    Revision++;
+
+                    return CreateSnapshotLocked();
+                }
+
                 if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE ||
                      !TurnDeadlineUtc.HasValue ||
                      utcNow < TurnDeadlineUtc.Value )
@@ -397,6 +608,25 @@ namespace DotsAndBoxes.Server.Matches
             }
 
             return unconfirmedEdgeIds[ RANDOM.Next(unconfirmedEdgeIds.Count) ];
+        }
+
+        private MatchSnapshot CancelMatchLocked()
+        {
+            MatchState = SERVER_MATCH_STATE_ENUM.CANCELLED;
+            _gameResult = GAME_RESULT_ENUM.IN_PROGRESS;
+            JoinDeadlineUtc = null;
+            ReadyDeadlineUtc = null;
+            MatchStartUtc = null;
+            TurnDeadlineUtc = null;
+            Revision++;
+
+            return CreateSnapshotLocked();
+        }
+
+        private static bool IsTerminalState(SERVER_MATCH_STATE_ENUM matchState)
+        {
+            return matchState == SERVER_MATCH_STATE_ENUM.FINISHED ||
+                   matchState == SERVER_MATCH_STATE_ENUM.CANCELLED;
         }
     }
 }

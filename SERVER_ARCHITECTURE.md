@@ -15,6 +15,7 @@
 - ASP.NET Core 단일 서버의 논리 구조
 - 개발용 User Session과 수동 Match 생성
 - SignalR Hub와 MatchRoom의 책임
+- Join, Ready와 서버 기준 시작 Countdown
 - Confirm, Snapshot, Revision 처리
 - RequestId 멱등성
 - 응답 유실 시 Client의 동일 RequestId 재전송
@@ -34,13 +35,15 @@
 개발용 Player A와 B 준비
 → 수동 Match 생성
 → 두 Unity Client 참가
+→ 양쪽 Client Ready
+→ 서버 기준 3초 Countdown
 → Server Confirm 판정
 → 전체 Snapshot 동기화
 → 4 × 4 한 판 완료
 → 양쪽 Client가 같은 결과 표시
 ```
 
-Preview, Docker, 실제 인증, PostgreSQL과 Rank는 후속 Phase의 방향만 기록하며 현재 서버 완료 조건으로 사용하지 않습니다. Disconnect와 명시적 나가기는 즉시 기권 패배로 처리하고 Match 재접속은 Android 첫 출시 후로 미룹니다.
+Preview, Docker, 실제 인증, PostgreSQL과 Rank는 후속 Phase의 방향만 기록하며 현재 서버 완료 조건으로 사용하지 않습니다. `ACTIVE` 이전 Disconnect와 명시적 나가기는 승패 없는 `CANCELLED`, `ACTIVE` 이후에는 즉시 기권 패배로 처리합니다. Match 재접속은 Android 첫 출시 후로 미룹니다.
 
 ### 이번 문서에서 확정하지 않는 범위
 
@@ -74,9 +77,10 @@ Preview, Docker, 실제 인증, PostgreSQL과 Rank는 후속 Phase의 방향만 
 | 중복 요청 | Client `RequestId` 기반 멱등 처리 |
 | 동시성 | MatchRoom별 `SemaphoreSlim`으로 명령 직렬화 |
 | Match 생성 | 개발용 수동 API 또는 메모리 FIFO 일반전 Queue로 생성 |
+| 시작 준비 | 양쪽 `JoinMatch`와 `ReadyMatch` 후 서버 기준 3초 Countdown |
 | 결과 처리 | DB 없이 MatchRoom 메모리에 최종 결과 보관 후 연결이 모두 사라지면 제거 |
 | Preview | Phase 4에서 서버 경유 방식으로 추가 |
-| Disconnect | 현재는 참가자당 연결 하나를 등록하고 연결 종료 시 기권 패배 |
+| Disconnect | `ACTIVE` 이전에는 Match 취소, `ACTIVE` 이후에는 기권 패배 |
 | 재접속 | Android 첫 출시 후 별도 Post-Launch Reconnect Stage에서 추가 |
 | Timer | 서버 기준 20초, 시간 초과 자동 Edge, 플레이어별 누적 3회 시 기권 |
 | 외부 배포 | Phase 6에서 Game Server + Caddy로 시작 |
@@ -115,14 +119,16 @@ Box 완성 및 소유자 결정
 
 ```text
 Match 참가자와 현재 상태 검증
+Join과 Ready 상태 및 시작 제한 시간 검증
+MatchStartUtc에 따른 ACTIVE 전환
 ExpectedRevision 검증
 RequestId 중복 검사
 DotsRule을 통한 Edge 확정
 Revision 증가
 전체 Snapshot 생성과 전송
 게임 종료와 메모리 결과 확정
-개별 Disconnect 시 기권자 상대의 승리 확정
-명시적 나가기 시 기권 패배 확정
+ACTIVE 이전 Disconnect·나가기 시 승패 없는 Match 취소
+ACTIVE 이후 Disconnect·나가기 시 기권자 상대의 승리 확정
 TurnDeadlineUtc 만료 시 자동 Edge 또는 누적 3회 AFK 패배 확정
 일반전 Queue에서 두 사용자를 연결하고 MatchRoom 생성
 ```
@@ -308,9 +314,12 @@ MatchRoom
 ├─ MatchId
 ├─ PlayerOne
 ├─ PlayerTwo
+├─ Player별 Join / Ready 상태
 ├─ DotsBoard
 ├─ Revision
 ├─ MatchState
+├─ JoinDeadlineUtc / ReadyDeadlineUtc
+├─ MatchStartUtc
 ├─ TurnDeadlineUtc
 ├─ Player별 TimeoutCount
 ├─ 처리된 RequestId 결과 Cache
@@ -324,6 +333,8 @@ MatchRoom만 다음 상태를 변경할 수 있습니다.
 - DotsBoard
 - Revision
 - Match 상태
+- Player별 Join과 Ready 상태
+- JoinDeadlineUtc, ReadyDeadlineUtc와 MatchStartUtc
 - TurnDeadlineUtc와 Timeout 횟수
 - 처리된 RequestId 결과
 
@@ -407,6 +418,8 @@ MatchState           SERVER_MATCH_STATE_ENUM
 
 PlayerOneUserId      Guid
 PlayerTwoUserId      Guid
+PlayerOneReady       bool
+PlayerTwoReady       bool
 CurrentPlayerIndex   PLAYER_INDEX_ENUM
 
 EdgeOwners[40]       PLAYER_INDEX_ENUM[]
@@ -415,6 +428,9 @@ BoxOwners[16]        PLAYER_INDEX_ENUM[]
 PlayerOneScore       int
 PlayerTwoScore       int
 
+JoinDeadlineUtc      DateTimeOffset 또는 null
+ReadyDeadlineUtc     DateTimeOffset 또는 null
+MatchStartUtc        DateTimeOffset 또는 null
 TurnDeadlineUtc      DateTimeOffset 또는 null
 PlayerOneTimeoutCount int
 PlayerTwoTimeoutCount int
@@ -426,7 +442,7 @@ GameResult           GAME_RESULT_ENUM
 
 보드가 정상 완료되면 `GameResult`도 DotsBoard에서 가져옵니다.
 
-`TurnDeadlineUtc`는 ACTIVE 온라인 Match에서만 서버 UTC 값을 가지며 FINISHED에서는 `null`입니다. Timeout 횟수는 플레이어별 누적값입니다. Disconnect와 명시적 나가기 기권은 `MatchState`, `GameResult`, `Revision`을 변경합니다. 정상 완료와 기권을 UI 또는 MatchHistory에서 구분해야 할 때 최소 종료 사유 Contract를 추가합니다.
+`JoinDeadlineUtc`는 `WAITING_FOR_PLAYERS`, `ReadyDeadlineUtc`는 `WAITING_FOR_READY`, `MatchStartUtc`는 `STARTING`부터 시작 시각을 표현합니다. `TurnDeadlineUtc`는 `ACTIVE`에서만 값을 가지며 종료 상태에서는 `null`입니다. Timeout 횟수는 플레이어별 누적값입니다. `ACTIVE` 이전 취소는 `GameResult=IN_PROGRESS`를 유지하고, `ACTIVE` 이후 Disconnect와 명시적 나가기는 `GameResult`와 `Revision`을 변경합니다. 정상 완료와 기권을 UI 또는 MatchHistory에서 구분해야 할 때 최소 종료 사유 Contract를 추가합니다.
 
 `SchemaVersion`은 저장 상태 Revision과 다른 Contract 형식 버전입니다. Contract 필드의 의미가 바뀔 때만 증가합니다.
 
@@ -462,13 +478,17 @@ OpponentReconnected
 
 ```text
 NONE
+WAITING_FOR_PLAYERS
+WAITING_FOR_READY
+STARTING
 ACTIVE
 FINISHED
+CANCELLED
 ```
 
-`NONE`은 초기화되지 않은 Snapshot을 구분하기 위한 값입니다. 개발용 API가 참가자 두 명이 준비된 Room을 바로 생성하므로 현재 Match 흐름에는 `ACTIVE`와 `FINISHED`만 사용합니다.
+`NONE`은 초기화되지 않은 Snapshot을 구분하기 위한 값입니다. `WAITING_FOR_PLAYERS`는 두 연결의 Join, `WAITING_FOR_READY`는 두 Client의 명시적 Ready, `STARTING`은 공통 시작 시각까지의 대기, `ACTIVE`는 게임 진행, `FINISHED`는 승패 확정, `CANCELLED`는 시작 전 무효 종료입니다.
 
-`CREATED`, `WAITING_FOR_PLAYERS`, `FINISHING`, `ABORTED`는 현재 Enum에서 제거합니다. Matchmaking, 결과 저장과 장애 처리를 실제로 구현할 때 필요한 상태만 다시 추가합니다.
+`CREATED`, `FINISHING`, `ABORTED`는 현재 Enum에 미리 넣지 않습니다. 결과 저장과 장애 처리를 실제로 구현할 때 필요한 상태만 추가합니다.
 
 ### MATCH_COMMAND_ERROR_ENUM
 
@@ -514,13 +534,29 @@ Server는 Core 실패 값을 Server 명령 오류로 변환합니다.
 Minimum Online Vertical Slice:
 
 ```text
+WAITING_FOR_PLAYERS
+   │ 양쪽 Join 완료
+   ▼
+WAITING_FOR_READY
+   │ 양쪽 Ready 완료
+   ▼
+STARTING
+   │ MatchStartUtc 도달
+   ▼
 ACTIVE
-   │ 모든 Box 완료
+   │ 모든 Box 완료 또는 시작 후 기권
    ▼
 FINISHED
+
+WAITING_FOR_PLAYERS / WAITING_FOR_READY / STARTING
+   │ 제한 시간 만료 또는 참가자 이탈
+   ▼
+CANCELLED
 ```
 
-DB가 없으므로 마지막 Confirm에서 보드 상태, 점수, GameResult와 `FINISHED`를 하나의 원자적 변경으로 확정합니다.
+Room 생성 후 첫 번째와 두 번째 Join의 제한 시간은 생성 시점부터 10초입니다. 두 Join이 끝나면 Ready 제한 시간 15초를 새로 시작합니다. 양쪽 Ready가 끝나면 서버가 하나의 `MatchStartUtc`를 현재 시각에서 3초 뒤로 설정합니다. Client는 이 UTC를 기준으로 Countdown을 표시하며 서버는 초 단위 Tick Event를 전송하지 않습니다.
+
+DB가 없으므로 마지막 Confirm에서 보드 상태, 점수, GameResult와 `FINISHED`를 하나의 원자적 변경으로 확정합니다. 시작 전 취소는 승자 없이 `GameResult=IN_PROGRESS`인 `CANCELLED` Snapshot으로 확정합니다.
 
 Phase 7 결과 저장 도입 후:
 
@@ -537,10 +573,14 @@ ACTIVE
 
 | 상태 | 허용 명령 |
 |---|---|
+| `WAITING_FOR_PLAYERS` | Join, 이미 Join한 참가자의 Ready, Sync, LeaveMatch, Disconnect 취소 처리 |
+| `WAITING_FOR_READY` | Ready, Sync, LeaveMatch, Disconnect 취소 처리 |
+| `STARTING` | Sync, LeaveMatch, Disconnect 취소, 시작 시각 전이 처리 |
 | `ACTIVE` | Confirm, Sync, LeaveMatch, Disconnect 기권, Turn Timeout 처리 |
 | `FINISHED` | 최종 결과 조회 |
+| `CANCELLED` | 취소 상태 조회 |
 
-Matchmaking과 DB가 추가되면 그때 `CREATED`, `WAITING_FOR_PLAYERS`, `FINISHING`, `ABORTED`의 필요성을 다시 검토합니다.
+Ready는 한 Match에서 준비 완료 방향으로만 변경하며 취소 Toggle을 제공하지 않습니다. 같은 참가자의 중복 Ready 호출은 상태와 Revision을 다시 변경하지 않습니다. `ACTIVE`에서만 Confirm을 허용합니다.
 
 Preview와 Reconnect는 각 기능이 구현된 뒤 `ACTIVE` 허용 명령에 추가합니다. 현재 Disconnect 기권은 Hub 연결 생명주기에서 MatchRoom의 직렬화 경로로 진입합니다.
 
@@ -634,12 +674,18 @@ Revision 초기값은 `0`입니다.
 
 Revision은 Move 횟수가 아니라 Client에 전송하는 권위 `MatchSnapshot`의 버전입니다. Snapshot에 포함된 권위 값이 변경되면 1 증가합니다.
 
+두 참가자가 Join을 먼저 끝내고 차례로 Ready하는 표준 순서는 `Room 생성 0 → 두 번째 Join 1 → 첫 Ready 2 → 두 번째 Ready와 STARTING 3 → ACTIVE 4 → 첫 Move 5`입니다. 첫 번째 참가자가 상대 Join보다 먼저 Ready하면 Ready와 Join 상태 전이의 순서만 바뀌며, 각 권위 변경이 한 번씩 증가한다는 원칙은 같습니다.
+
 다음 경우에 1 증가합니다.
 
+- 두 번째 참가자의 Join으로 `WAITING_FOR_READY`가 됨
+- 각 참가자의 최초 Ready가 반영됨
+- `MatchStartUtc` 도달로 `ACTIVE`가 됨
 - 유효한 Confirm으로 DotsBoard 상태가 변경됨
 - Turn Timer 자동 선택으로 유효한 Edge가 확정됨
 - 플레이어별 누적 3회 Timeout으로 최종 결과가 결정됨
-- 명시적 나가기 또는 개별 Disconnect로 상대 승리가 확정됨
+- 시작 전 제한 시간 만료나 참가자 이탈로 `CANCELLED`가 됨
+- 시작 후 명시적 나가기 또는 개별 Disconnect로 상대 승리가 확정됨
 
 마지막 Confirm으로 게임이 끝나면 Edge, Box, 점수, GameResult와 `FINISHED`를 같은 Snapshot 변경으로 처리하므로 Revision은 한 번만 증가합니다.
 
@@ -655,6 +701,7 @@ Revision은 Move 횟수가 아니라 Client에 전송하는 권위 `MatchSnapsho
 - 잘못된 Confirm 요청
 - 동일 RequestId 재전송
 - Sync 요청
+- 이미 반영된 참가자의 중복 Join 또는 Ready
 - Ping/Pong
 - Connection 상태 알림
 - 남은 시간 표시 갱신
@@ -747,6 +794,8 @@ Revision은 감소하지 않음
 CurrentPlayerIndex는 실제 플레이어 값
 FINISHED이면 GameResult는 IN_PROGRESS가 아님
 ACTIVE이면 GameResult는 IN_PROGRESS
+CANCELLED이면 GameResult는 IN_PROGRESS
+FINISHED 또는 CANCELLED이면 TurnDeadlineUtc는 null
 ```
 
 Snapshot 배열은 전송 후 MatchRoom 상태 변경의 영향을 받지 않도록 복사합니다.
@@ -754,6 +803,8 @@ Snapshot 배열은 전송 후 MatchRoom 상태 변경의 영향을 받지 않도
 ---
 
 ## 18. Unity Client 적용 방향
+
+> **Ready 서버 구현 완료, Unity 연동 대기.** 현재 Unity Client는 기존 온라인 게임 흐름을 보유하지만 새 `ReadyMatch` 호출과 시작 대기 UI는 아직 구현하지 않았습니다. 이 연동 전에는 서버 Match가 `ACTIVE`까지 진행되지 않습니다.
 
 현재 로컬 GameBoard는 다음 흐름을 사용합니다.
 
@@ -792,6 +843,18 @@ Minimum Online Vertical Slice에서는 Client가 다음을 실제로 검증해�
 - Revision 불일치 후 RequestSync
 - 마지막 Snapshot을 통한 결과 표시
 
+Ready 연동은 다음 순서를 반드시 지킵니다.
+
+1. SignalR 연결과 `JoinMatch`를 완료합니다.
+2. 초기 Snapshot 적용, `MatchStateChanged` 구독, Scene·보드·UI 생성을 완료합니다.
+3. 수신한 Snapshot을 화면에 적용할 수 있는 상태가 된 뒤 `ReadyMatch(MatchId)`를 한 번 호출합니다.
+4. `WAITING_FOR_PLAYERS`, `WAITING_FOR_READY`, `STARTING`에서는 Edge 입력을 잠급니다.
+5. `STARTING`에서는 `MatchStartUtc - 현재 UTC`로 3초 Countdown을 표시합니다.
+6. 서버의 `ACTIVE` Snapshot을 받은 뒤에만 입력과 Turn Timer UI를 활성화합니다.
+7. `CANCELLED`에서는 승패 Result를 만들지 않고 Lobby로 돌아가 재시도를 안내합니다.
+
+Ready 신호는 단순히 Scene Load 함수가 끝났다는 뜻이 아닙니다. Snapshot 적용 대상과 Event Handler가 모두 준비되어 첫 Broadcast를 놓치지 않는 상태를 의미합니다.
+
 ---
 
 ## 19. Turn Timer
@@ -822,6 +885,9 @@ Timer는 MatchRoom마다 별도 Thread를 만들지 않습니다. 중앙 `MatchT
 TurnDurationSeconds: 20
 MaxTimeoutsPerPlayer: 3
 SweepIntervalMilliseconds: 500
+JoinTimeoutSeconds: 10
+ReadyTimeoutSeconds: 15
+StartCountdownSeconds: 3
 ```
 
 ---
@@ -840,15 +906,15 @@ ConnectionId → MatchId, UserId
 - `JoinMatch` 성공 과정에서 참가자당 활성 연결 하나를 등록합니다.
 - 같은 참가자의 두 번째 연결은 거부합니다.
 - `ConnectionId`는 연결 추적에만 사용하고 User 신원은 인증 Claim의 UserId로 확인합니다.
-- `OnDisconnectedAsync`가 등록된 개별 연결 종료를 확정하면 `MatchRoom.TryForfeit_async()`를 호출합니다.
-- 사용자가 나가기 버튼을 선택하면 `LeaveMatch`가 같은 기권 경로를 명시적으로 호출합니다.
+- `OnDisconnectedAsync`가 등록된 개별 연결 종료를 확정하면 `MatchRoom.TryHandlePlayerExit_async()`를 호출합니다.
+- 사용자가 나가기 버튼을 선택하면 `LeaveMatch`가 같은 종료 경로를 명시적으로 호출합니다.
 - 기권 처리는 MatchRoom의 기존 `SemaphoreSlim` 경로에서 직렬화합니다.
-- `ACTIVE`인 Match만 상대 승리, `FINISHED`, Revision 증가로 한 번 전환합니다.
+- `ACTIVE` 이전에는 승패 없이 `CANCELLED`, `ACTIVE`에서는 상대 승리와 `FINISHED`로 Revision을 한 번 증가시킵니다.
 - 연결된 상대에게 기존 `MatchStateChanged` 전체 Snapshot을 전송합니다.
 - 이미 종료된 Match와 등록되지 않은 연결 종료는 상태를 변경하지 않습니다.
 - Server `ApplicationStopping` 중 발생한 Disconnect는 Player 기권으로 처리하지 않습니다.
 - Server Process 장애로 메모리 Room이 유실되면 승패와 전적을 확정하지 않습니다.
-- FINISHED이고 등록된 Match 연결이 0개가 되면 `MatchRoomLifecycleService`가 Room을 메모리에서 제거합니다.
+- FINISHED 또는 CANCELLED이고 등록된 Match 연결이 0개가 되면 `MatchRoomLifecycleService`가 Room을 메모리에서 제거합니다.
 
 출시판에는 ReconnectToken, Grace Period, 연결 상태를 저장하는 `MatchPlayer` 필드와 자동 재접속을 추가하지 않습니다.
 
@@ -972,6 +1038,8 @@ DurationMs
 ```text
 MATCH_CREATED
 PLAYER_JOINED
+PLAYER_READY
+MATCH_STARTING
 EDGE_CONFIRMED
 COMMAND_REJECTED
 REVISION_MISMATCH
@@ -987,13 +1055,14 @@ GET /health/core
 GET /development/status  (Development 전용)
 ```
 
-`/development/status`는 전체/ACTIVE/FINISHED Room 수, 등록된 Match 연결 수와 Queue 대기 인원을 반환합니다.
+`/development/status`는 전체/WAITING/STARTING/ACTIVE/FINISHED/CANCELLED Room 수, 등록된 Match 연결 수와 Queue 대기 인원을 반환합니다.
 
 현재 구조화 로그:
 
 - 개발용 Match 생성
 - Queue 진입·취소·매칭 완료
 - Match 참가·나가기·Disconnect 기권
+- Ready와 시작 Countdown 상태 전이
 - Confirm 성공·거부와 RequestId/Revision
 - Turn Timeout 처리
 - 종료 Room 제거
@@ -1111,6 +1180,8 @@ Revision 이상 시 전체 동기화가 가능하다.
 - Revision 불일치 후 RequestSync
 - 마지막 Snapshot 결과 표시
 
+기존 Vertical Slice 검증은 Ready 상태 도입 전에 완료되었습니다. 새 서버 상태와 맞추기 위한 Unity 후속 작업은 `JoinMatch` 이후 초기 Snapshot과 Event 구독을 준비하고 `ReadyMatch`를 호출하는 것, 시작 전 상태에서 입력을 잠그는 것, `MatchStartUtc` Countdown과 `CANCELLED` UX를 추가하는 것입니다.
+
 로컬 두 Client 검증에서는 Windows Development Build 하나를 두 번 실행합니다. Client는 다음 실행 인자를 받으면 Inspector에 저장된 개발 값을 대신 사용합니다.
 
 ```text
@@ -1140,12 +1211,15 @@ Server는 Development 환경에서만 첫 정상 Confirm의 요청자 Broadcast�
 
 검증 기록(2026-08-18, Windows Development Build): 두 Unity Client가 개발용 수동 Match에 참가해 4 × 4 한 판을 완료했고 양쪽 Result View의 최종 결과가 일치했습니다. 별도 응답 유실 시나리오에서는 첫 Confirm 처리 후 요청자 응답과 자기 Broadcast가 없는 상태를 만들고, 같은 RequestId 재전송으로 Revision 추가 증가 없이 양쪽 상태가 복구되는 것을 확인했습니다.
 
-서버 안정화 검증 기록(2026-08-18): Server 자동 테스트 51개가 통과했습니다. SignalR 통합 클라이언트로 전체 경기, RequestId 재전송, Revision 충돌, Disconnect 기권, 인메모리 일반전 매칭과 자동 MatchRoom 생성을 실제 실행해 통과했습니다. Turn Timer와 AFK는 고정 시간·고정 난수 단위 테스트로 검증했으며 Unity Timer UI와 Android 실제 기기 검증은 남아 있습니다.
+서버 안정화 검증 기록(2026-08-18): Server 자동 테스트 58개가 통과했습니다. SignalR 통합 클라이언트로 양쪽 Join·Ready, 3초 Countdown, ACTIVE 전환, 전체 경기, RequestId 재전송, Revision 충돌, Disconnect 기권, 인메모리 일반전 매칭과 자동 MatchRoom 생성을 실제 실행해 통과했습니다. Join 10초·Ready 15초 만료, 시작 전 취소, Turn Timer와 AFK는 고정 시간·고정 난수 단위 테스트로 검증했습니다. Unity Ready/Countdown/취소 UI와 Android 실제 기기 검증은 남아 있습니다.
 
-여기까지가 Minimum Online Vertical Slice입니다.
+기존 Ready 도입 전 Minimum Online Vertical Slice는 여기까지 완료되었습니다. Ready 도입 후 서버 범위도 완료되었으며, 새 시작 절차의 전체 완료 판정은 아래 Unity Client 연동과 실제 실행 검증 뒤에 갱신합니다.
 
 ### Stage 6 — Online Flow Completion
 
+- `ReadyMatch` 호출과 시작 전 상태 UI
+- `MatchStartUtc` Countdown과 ACTIVE 전 입력 잠금
+- CANCELLED 수신 시 승패 없이 Lobby 복귀
 - 상대 Preview 전달
 - PreviewSequence
 - Preview Rate Limit
@@ -1160,9 +1234,10 @@ Server는 Development 환경에서만 첫 정상 Confirm의 요청자 Broadcast�
 - 자동 Edge 선택
 - Timeout 횟수
 - AFK 기권
-- FINISHED이며 연결이 없는 Room 제거
+- FINISHED 또는 CANCELLED이며 연결이 없는 Room 제거
+- Join/Ready/Countdown 상태와 시작 전 CANCELLED 처리
 
-남은 검증은 Unity Timer 표시, 명시적 나가기 UX와 실제 모바일 환경 테스트입니다.
+남은 검증은 Unity Ready 호출, 시작 Countdown, CANCELLED 처리, Timer 표시, 명시적 나가기 UX와 실제 모바일 환경 테스트입니다.
 
 ### Stage 8 — Remote Deployment
 
@@ -1231,6 +1306,9 @@ Easy / Normal / Hard AI 확장은 Shared Core와 Unity Gameplay의 출시 후 �
 → 개발용 API로 MatchRoom 수동 생성
 → 선공 결정
 → 두 Unity Client가 초기 Snapshot 수신
+→ 양쪽 Client가 Ready 전송
+→ 같은 MatchStartUtc로 3초 Countdown
+→ ACTIVE Snapshot 수신 후 입력 활성화
 → Confirm 서버 판정
 → Snapshot 동기화
 → 응답 유실 시 동일 RequestId 재전송

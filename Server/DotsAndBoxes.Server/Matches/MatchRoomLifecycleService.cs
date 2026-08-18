@@ -22,7 +22,7 @@ namespace DotsAndBoxes.Server.Matches
             LOGGER = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task<bool> TryRemoveFinishedWithoutConnections_async(
+        public async Task<bool> TryRemoveTerminalWithoutConnections_async(
             Guid matchId ,
             CancellationToken cancellationToken = default)
         {
@@ -37,7 +37,8 @@ namespace DotsAndBoxes.Server.Matches
             MatchSnapshot snapshot =
                 await matchRoom.CreateSnapshot_async(cancellationToken);
 
-            if ( snapshot.MatchState != SERVER_MATCH_STATE_ENUM.FINISHED ||
+            if ( (snapshot.MatchState != SERVER_MATCH_STATE_ENUM.FINISHED &&
+                  snapshot.MatchState != SERVER_MATCH_STATE_ENUM.CANCELLED) ||
                  MATCH_CONNECTION_REGISTRY.GetMatchConnectionCount(matchId) != 0 )
             {
                 return false;

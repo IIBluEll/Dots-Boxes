@@ -12,20 +12,21 @@ namespace DotsAndBoxes.Server.Tests.Matches
             PLAYER_INDEX_ENUM forfeitingPlayerIndex ,
             GAME_RESULT_ENUM expectedGameResult)
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             Guid forfeitingUserId = forfeitingPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
                 ? room.PlayerOne.UserId
                 : room.PlayerTwo.UserId;
 
             MatchSnapshot? snapshot =
-                await room.TryForfeit_async(forfeitingUserId);
+                await room.TryHandlePlayerExit_async(forfeitingUserId);
 
             Assert.That(snapshot , Is.Not.Null);
 
             Assert.Multiple(() =>
             {
-                Assert.That(snapshot!.Revision , Is.EqualTo(1));
+                Assert.That(snapshot!.Revision , Is.EqualTo(initialRevision + 1));
                 Assert.That(snapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.FINISHED));
                 Assert.That(snapshot.GameResult , Is.EqualTo(expectedGameResult));
                 Assert.That(snapshot.EdgeOwners.All(owner => owner == PLAYER_INDEX_ENUM.NONE) , Is.True);
@@ -36,13 +37,14 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public async Task TryForfeit_AfterMatchFinished_DoesNotChangeResultAgain()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             MatchSnapshot? firstSnapshot =
-                await room.TryForfeit_async(room.PlayerOne.UserId);
+                await room.TryHandlePlayerExit_async(room.PlayerOne.UserId);
 
             MatchSnapshot? secondSnapshot =
-                await room.TryForfeit_async(room.PlayerTwo.UserId);
+                await room.TryHandlePlayerExit_async(room.PlayerTwo.UserId);
 
             MatchSnapshot finalSnapshot =
                 await room.CreateSnapshot_async();
@@ -51,7 +53,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
             {
                 Assert.That(firstSnapshot , Is.Not.Null);
                 Assert.That(secondSnapshot , Is.Null);
-                Assert.That(finalSnapshot.Revision , Is.EqualTo(1));
+                Assert.That(finalSnapshot.Revision , Is.EqualTo(initialRevision + 1));
                 Assert.That(finalSnapshot.GameResult , Is.EqualTo(GAME_RESULT_ENUM.PLAYER_TWO_WIN));
             });
         }
@@ -59,27 +61,24 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public async Task TryForfeit_UnknownUser_DoesNotChangeMatch()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             MatchSnapshot? snapshot =
-                await room.TryForfeit_async(Guid.NewGuid());
+                await room.TryHandlePlayerExit_async(Guid.NewGuid());
 
             Assert.Multiple(() =>
             {
                 Assert.That(snapshot , Is.Null);
-                Assert.That(room.Revision , Is.Zero);
+                Assert.That(room.Revision , Is.EqualTo(initialRevision));
                 Assert.That(room.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.ACTIVE));
                 Assert.That(room.GameResult , Is.EqualTo(GAME_RESULT_ENUM.IN_PROGRESS));
             });
         }
 
-        private static MatchRoom CreateRoom()
+        private static Task<MatchRoom> CreateRoom_async()
         {
-            return new MatchRoom(
-                Guid.NewGuid() ,
-                new MatchPlayer(Guid.NewGuid()) ,
-                new MatchPlayer(Guid.NewGuid()) ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE);
+            return ActiveMatchRoomTestFactory.Create_async();
         }
     }
 }

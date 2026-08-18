@@ -72,8 +72,11 @@ if ( app.Environment.IsDevelopment() )
             MatchRooms = new
             {
                 Total = matchRoomProvider.Count ,
+                Waiting = matchRoomProvider.WaitingCount ,
+                Starting = matchRoomProvider.StartingCount ,
                 Active = matchRoomProvider.ActiveCount ,
-                Finished = matchRoomProvider.FinishedCount
+                Finished = matchRoomProvider.FinishedCount ,
+                Cancelled = matchRoomProvider.CancelledCount
             } ,
             ActiveMatchConnections = matchConnectionRegistry.Count ,
             MatchmakingQueueCount = matchmakingQueue.Count ,

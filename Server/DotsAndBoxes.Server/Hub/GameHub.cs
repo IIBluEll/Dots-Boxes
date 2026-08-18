@@ -61,10 +61,11 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             MatchRoom matchRoom = GetParticipantRoom(matchId, userId);
-            MatchSnapshot initialSnapshot = await matchRoom.CreateSnapshot_async(
+            MatchSnapshot currentSnapshot = await matchRoom.CreateSnapshot_async(
                 Context.ConnectionAborted);
 
-            if ( initialSnapshot.MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
+            if ( currentSnapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED ||
+                 currentSnapshot.MatchState == SERVER_MATCH_STATE_ENUM.CANCELLED )
             {
                 throw new HubException("이미 종료된 매치에는 참가할 수 없습니다.");
             }
@@ -84,13 +85,25 @@ namespace DotsAndBoxes.Server.Hubs
                     CreateMatchGroupName(matchId) ,
                     Context.ConnectionAborted);
 
+                MatchRoomUpdateResult joinResult =
+                    await matchRoom.MarkPlayerJoined_async(
+                        userId ,
+                        Context.ConnectionAborted);
+
+                if ( joinResult.HasStateChanged )
+                {
+                    await Clients
+                        .Group(CreateMatchGroupName(matchId))
+                        .MatchStateChanged(joinResult.Snapshot);
+                }
+
                 LOGGER.LogInformation(
                     "User joined match. MatchId={MatchId}, UserId={UserId}, ConnectionId={ConnectionId}",
                     matchId ,
                     userId ,
                     Context.ConnectionId);
 
-                return initialSnapshot;
+                return joinResult.Snapshot;
             }
             catch
             {
@@ -99,8 +112,60 @@ namespace DotsAndBoxes.Server.Hubs
                     out _ ,
                     out _);
 
+                await Groups.RemoveFromGroupAsync(
+                    Context.ConnectionId ,
+                    CreateMatchGroupName(matchId));
+
                 throw;
             }
+        }
+
+        public async Task<MatchSnapshot> ReadyMatch(Guid matchId)
+        {
+            if ( !TryGetAuthenticatedUserId(out Guid userId) )
+            {
+                throw new HubException("인증되지 않은 연결입니다.");
+            }
+
+            if ( !MATCH_CONNECTION_REGISTRY.TryGetParticipant(
+                    Context.ConnectionId ,
+                    out Guid registeredMatchId ,
+                    out Guid registeredUserId) ||
+                 registeredMatchId != matchId ||
+                 registeredUserId != userId )
+            {
+                throw new HubException("JoinMatch가 완료되지 않은 연결입니다.");
+            }
+
+            MatchRoom matchRoom = GetParticipantRoom(matchId , userId);
+            MatchRoomUpdateResult readyResult;
+
+            try
+            {
+                readyResult = await matchRoom.MarkPlayerReady_async(
+                    userId ,
+                    Context.ConnectionAborted);
+            }
+            catch ( InvalidOperationException exception )
+            {
+                throw new HubException(exception.Message);
+            }
+
+            if ( readyResult.HasStateChanged )
+            {
+                await Clients
+                    .Group(CreateMatchGroupName(matchId))
+                    .MatchStateChanged(readyResult.Snapshot);
+            }
+
+            LOGGER.LogInformation(
+                "Player ready state confirmed. MatchId={MatchId}, UserId={UserId}, MatchState={MatchState}, Revision={Revision}",
+                matchId ,
+                userId ,
+                readyResult.Snapshot.MatchState ,
+                readyResult.Snapshot.Revision);
+
+            return readyResult.Snapshot;
         }
 
         public async Task<MatchAssignment?> EnterMatchmaking()
@@ -111,7 +176,7 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             if ( MATCH_CONNECTION_REGISTRY.ContainsUser(userId) ||
-                 MATCH_ROOM_PROVIDER.ContainsActiveUser(userId) )
+                 MATCH_ROOM_PROVIDER.ContainsUserInOpenMatch(userId) )
             {
                 throw new HubException("이미 진행 중인 매치가 있습니다.");
             }
@@ -210,15 +275,16 @@ namespace DotsAndBoxes.Server.Hubs
                      matchRoom != null )
                 {
                     MatchSnapshot? finalSnapshot =
-                        await matchRoom.TryForfeit_async(userId);
+                        await matchRoom.TryHandlePlayerExit_async(userId);
 
                     if ( finalSnapshot != null )
                     {
                         LOGGER.LogInformation(
-                            "Disconnected player forfeited match. MatchId={MatchId}, UserId={UserId}, Revision={Revision}",
+                            "Disconnected player changed match state. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, MatchState={MatchState}",
                             matchId ,
                             userId ,
-                            finalSnapshot.Revision);
+                            finalSnapshot.Revision ,
+                            finalSnapshot.MatchState);
 
                         await Clients
                             .Group(CreateMatchGroupName(matchId))
@@ -226,7 +292,7 @@ namespace DotsAndBoxes.Server.Hubs
                     }
 
                     await MATCH_ROOM_LIFECYCLE_SERVICE
-                        .TryRemoveFinishedWithoutConnections_async(matchId);
+                        .TryRemoveTerminalWithoutConnections_async(matchId);
                 }
             }
             finally
@@ -342,15 +408,15 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             MatchRoom matchRoom = GetParticipantRoom(matchId , userId);
-            MatchSnapshot? forfeitSnapshot =
-                await matchRoom.TryForfeit_async(
+            MatchSnapshot? exitSnapshot =
+                await matchRoom.TryHandlePlayerExit_async(
                     userId ,
                     Context.ConnectionAborted);
 
-            MatchSnapshot finalSnapshot = forfeitSnapshot ??
+            MatchSnapshot finalSnapshot = exitSnapshot ??
                 await matchRoom.CreateSnapshot_async(Context.ConnectionAborted);
 
-            if ( forfeitSnapshot != null )
+            if ( exitSnapshot != null )
             {
                 await Clients
                     .Group(CreateMatchGroupName(matchId))
@@ -371,7 +437,7 @@ namespace DotsAndBoxes.Server.Hubs
             finally
             {
                 await MATCH_ROOM_LIFECYCLE_SERVICE
-                    .TryRemoveFinishedWithoutConnections_async(matchId);
+                    .TryRemoveTerminalWithoutConnections_async(matchId);
             }
 
             LOGGER.LogInformation(

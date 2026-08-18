@@ -57,7 +57,7 @@ namespace DotsAndBoxes.Server.Matches
             {
                 try
                 {
-                    MatchSnapshot? snapshot = await matchRoom.TryHandleTurnTimeout_async(
+                    MatchSnapshot? snapshot = await matchRoom.TryAdvanceClock_async(
                         utcNow ,
                         cancellationToken);
 
@@ -67,7 +67,7 @@ namespace DotsAndBoxes.Server.Matches
                     }
 
                     LOGGER.LogInformation(
-                        "Turn timeout handled. MatchId={MatchId}, Revision={Revision}, CurrentPlayer={CurrentPlayer}, PlayerOneTimeouts={PlayerOneTimeouts}, PlayerTwoTimeouts={PlayerTwoTimeouts}, MatchState={MatchState}",
+                        "Match clock transition handled. MatchId={MatchId}, Revision={Revision}, CurrentPlayer={CurrentPlayer}, PlayerOneTimeouts={PlayerOneTimeouts}, PlayerTwoTimeouts={PlayerTwoTimeouts}, MatchState={MatchState}",
                         snapshot.MatchId ,
                         snapshot.Revision ,
                         snapshot.CurrentPlayerIndex ,
@@ -79,10 +79,11 @@ namespace DotsAndBoxes.Server.Matches
                         .Group(GameHub.CreateMatchGroupName(snapshot.MatchId))
                         .MatchStateChanged(snapshot);
 
-                    if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED )
+                    if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED ||
+                         snapshot.MatchState == SERVER_MATCH_STATE_ENUM.CANCELLED )
                     {
                         await MATCH_ROOM_LIFECYCLE_SERVICE
-                            .TryRemoveFinishedWithoutConnections_async(
+                            .TryRemoveTerminalWithoutConnections_async(
                                 snapshot.MatchId ,
                                 cancellationToken);
                     }
@@ -95,7 +96,7 @@ namespace DotsAndBoxes.Server.Matches
                 {
                     LOGGER.LogError(
                         exception ,
-                        "Turn timeout handling failed. MatchId={MatchId}",
+                        "Match clock handling failed. MatchId={MatchId}",
                         matchRoom.MatchId);
                 }
             }

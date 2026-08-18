@@ -8,12 +8,12 @@ namespace DotsAndBoxes.Server.Tests.Matches
     public sealed class MatchRoomLifecycleServiceTests
     {
         [Test]
-        public async Task TryRemoveFinishedWithoutConnections_ActiveRoom_KeepsRoom()
+        public async Task TryRemoveTerminalWithoutConnections_OpenRoom_KeepsRoom()
         {
-            TestContextData context = CreateContext();
+            TestContextData context = await CreateContext_async(false);
 
             bool removed = await context.Service
-                .TryRemoveFinishedWithoutConnections_async(context.Room.MatchId);
+                .TryRemoveTerminalWithoutConnections_async(context.Room.MatchId);
 
             Assert.Multiple(() =>
             {
@@ -23,19 +23,19 @@ namespace DotsAndBoxes.Server.Tests.Matches
         }
 
         [Test]
-        public async Task TryRemoveFinishedWithoutConnections_ConnectedFinishedRoom_KeepsRoom()
+        public async Task TryRemoveTerminalWithoutConnections_ConnectedFinishedRoom_KeepsRoom()
         {
-            TestContextData context = CreateContext();
+            TestContextData context = await CreateContext_async(true);
 
             context.Registry.TryRegister(
                 "connection-one" ,
                 context.Room.MatchId ,
                 context.Room.PlayerOne.UserId);
 
-            await context.Room.TryForfeit_async(context.Room.PlayerOne.UserId);
+            await context.Room.TryHandlePlayerExit_async(context.Room.PlayerOne.UserId);
 
             bool removed = await context.Service
-                .TryRemoveFinishedWithoutConnections_async(context.Room.MatchId);
+                .TryRemoveTerminalWithoutConnections_async(context.Room.MatchId);
 
             Assert.Multiple(() =>
             {
@@ -45,17 +45,17 @@ namespace DotsAndBoxes.Server.Tests.Matches
         }
 
         [Test]
-        public async Task TryRemoveFinishedWithoutConnections_NoConnections_RemovesRoomOnce()
+        public async Task TryRemoveTerminalWithoutConnections_NoConnections_RemovesRoomOnce()
         {
-            TestContextData context = CreateContext();
+            TestContextData context = await CreateContext_async(true);
 
-            await context.Room.TryForfeit_async(context.Room.PlayerOne.UserId);
+            await context.Room.TryHandlePlayerExit_async(context.Room.PlayerOne.UserId);
 
             bool firstRemoved = await context.Service
-                .TryRemoveFinishedWithoutConnections_async(context.Room.MatchId);
+                .TryRemoveTerminalWithoutConnections_async(context.Room.MatchId);
 
             bool secondRemoved = await context.Service
-                .TryRemoveFinishedWithoutConnections_async(context.Room.MatchId);
+                .TryRemoveTerminalWithoutConnections_async(context.Room.MatchId);
 
             Assert.Multiple(() =>
             {
@@ -66,15 +66,17 @@ namespace DotsAndBoxes.Server.Tests.Matches
             });
         }
 
-        private static TestContextData CreateContext()
+        private static async Task<TestContextData> CreateContext_async(bool createActiveRoom)
         {
             MatchRoomProvider provider = new MatchRoomProvider();
             MatchConnectionRegistry registry = new MatchConnectionRegistry();
-            MatchRoom room = new MatchRoom(
-                Guid.NewGuid() ,
-                new MatchPlayer(Guid.NewGuid()) ,
-                new MatchPlayer(Guid.NewGuid()) ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE);
+            MatchRoom room = createActiveRoom
+                ? await ActiveMatchRoomTestFactory.Create_async()
+                : new MatchRoom(
+                    Guid.NewGuid() ,
+                    new MatchPlayer(Guid.NewGuid()) ,
+                    new MatchPlayer(Guid.NewGuid()) ,
+                    PLAYER_INDEX_ENUM.PLAYER_ONE);
 
             provider.TryAdd(room);
 

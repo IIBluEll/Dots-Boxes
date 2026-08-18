@@ -141,6 +141,13 @@ namespace DotsAndBoxes.Gameplay
                     "ACTIVE Match의 결과는 IN_PROGRESS여야 합니다.");
             }
 
+            if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.CANCELLED &&
+                 snapshot.GameResult != GAME_RESULT_ENUM.IN_PROGRESS )
+            {
+                throw new InvalidOperationException(
+                    "CANCELLED Match의 결과는 IN_PROGRESS여야 합니다.");
+            }
+
             if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.FINISHED &&
                 snapshot.GameResult == GAME_RESULT_ENUM.IN_PROGRESS )
             {
@@ -152,6 +159,12 @@ namespace DotsAndBoxes.Gameplay
                  snapshot.TurnDeadlineUtc.HasValue )
             {
                 throw new InvalidOperationException("FINISHED Match에는 턴 마감 시간이 없어야 합니다.");
+            }
+
+            if ( snapshot.MatchState == SERVER_MATCH_STATE_ENUM.CANCELLED &&
+                 snapshot.TurnDeadlineUtc.HasValue )
+            {
+                throw new InvalidOperationException("CANCELLED Match에는 턴 마감 시간이 없어야 합니다.");
             }
         }
 
@@ -188,6 +201,11 @@ namespace DotsAndBoxes.Gameplay
                 PlayerOneUserId = snapshot.PlayerOneUserId ,
                 PlayerTwoUserId = snapshot.PlayerTwoUserId ,
                 CurrentPlayerIndex = snapshot.CurrentPlayerIndex ,
+                PlayerOneReady = snapshot.PlayerOneReady ,
+                PlayerTwoReady = snapshot.PlayerTwoReady ,
+                JoinDeadlineUtc = snapshot.JoinDeadlineUtc ,
+                ReadyDeadlineUtc = snapshot.ReadyDeadlineUtc ,
+                MatchStartUtc = snapshot.MatchStartUtc ,
                 EdgeOwners = (PLAYER_INDEX_ENUM[])snapshot.EdgeOwners.Clone() ,
                 BoxOwners = (PLAYER_INDEX_ENUM[])snapshot.BoxOwners.Clone() ,
                 PlayerOneScore = snapshot.PlayerOneScore ,

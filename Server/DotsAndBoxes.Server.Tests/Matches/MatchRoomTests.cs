@@ -8,7 +8,7 @@ namespace DotsAndBoxes.Server.Tests.Matches
     public sealed class MatchRoomTests
     {
         [Test]
-        public async Task NewRoom_CreatesActiveInitialSnapshot()
+        public async Task NewRoom_CreatesWaitingInitialSnapshot()
         {
             Guid matchId = Guid.NewGuid();
             MatchPlayer playerOne = new MatchPlayer(Guid.NewGuid());
@@ -27,7 +27,13 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(snapshot.SchemaVersion , Is.EqualTo(MatchSnapshot.CURRENT_SCHEMA_VERSION));
                 Assert.That(snapshot.MatchId , Is.EqualTo(matchId));
                 Assert.That(snapshot.Revision , Is.EqualTo(0));
-                Assert.That(snapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.ACTIVE));
+                Assert.That(snapshot.MatchState , Is.EqualTo(SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS));
+                Assert.That(snapshot.JoinDeadlineUtc , Is.Not.Null);
+                Assert.That(snapshot.ReadyDeadlineUtc , Is.Null);
+                Assert.That(snapshot.MatchStartUtc , Is.Null);
+                Assert.That(snapshot.TurnDeadlineUtc , Is.Null);
+                Assert.That(snapshot.PlayerOneReady , Is.False);
+                Assert.That(snapshot.PlayerTwoReady , Is.False);
 
                 Assert.That(snapshot.PlayerOneUserId , Is.EqualTo(playerOne.UserId));
                 Assert.That(snapshot.PlayerTwoUserId , Is.EqualTo(playerTwo.UserId));

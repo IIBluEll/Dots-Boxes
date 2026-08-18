@@ -7,8 +7,13 @@ namespace DotsAndBoxes.Server.Matches
         private readonly ConcurrentDictionary<Guid, MatchRoom> MATCH_ROOMS = new ConcurrentDictionary<Guid, MatchRoom>();
 
         public int Count => MATCH_ROOMS.Count;
+        public int WaitingCount => MATCH_ROOMS.Values.Count(room =>
+            room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS ||
+            room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY);
+        public int StartingCount => MATCH_ROOMS.Values.Count(room => room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.STARTING);
         public int ActiveCount => MATCH_ROOMS.Values.Count(room => room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.ACTIVE);
         public int FinishedCount => MATCH_ROOMS.Values.Count(room => room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.FINISHED);
+        public int CancelledCount => MATCH_ROOMS.Values.Count(room => room.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.CANCELLED);
 
         public bool TryAdd(MatchRoom matchRoom)
         {
@@ -35,7 +40,7 @@ namespace DotsAndBoxes.Server.Matches
             return MATCH_ROOMS.Values.ToArray();
         }
 
-        public bool ContainsActiveUser(Guid userId)
+        public bool ContainsUserInOpenMatch(Guid userId)
         {
             if ( userId == Guid.Empty )
             {
@@ -44,7 +49,8 @@ namespace DotsAndBoxes.Server.Matches
 
             foreach ( MatchRoom matchRoom in MATCH_ROOMS.Values )
             {
-                if ( matchRoom.MatchState == DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.ACTIVE &&
+                if ( matchRoom.MatchState != DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.FINISHED &&
+                     matchRoom.MatchState != DotsAndBoxes.Shared.SERVER_MATCH_STATE_ENUM.CANCELLED &&
                      matchRoom.TryGetPlayerIndex(userId , out _) )
                 {
                     return true;

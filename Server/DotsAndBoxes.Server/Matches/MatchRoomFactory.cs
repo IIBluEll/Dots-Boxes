@@ -8,6 +8,9 @@ namespace DotsAndBoxes.Server.Matches
     {
         private readonly TimeSpan TURN_DURATION;
         private readonly int MAX_TIMEOUTS_PER_PLAYER;
+        private readonly TimeSpan JOIN_TIMEOUT;
+        private readonly TimeSpan READY_TIMEOUT;
+        private readonly TimeSpan START_COUNTDOWN;
 
         public MatchRoomFactory(IOptions<MatchTimingOptions> options)
         {
@@ -24,8 +27,26 @@ namespace DotsAndBoxes.Server.Matches
                 throw new InvalidOperationException("MatchTiming:MaxTimeoutsPerPlayer는 1 이상이어야 합니다.");
             }
 
+            if ( timingOptions.JoinTimeoutSeconds <= 0 )
+            {
+                throw new InvalidOperationException("MatchTiming:JoinTimeoutSeconds는 1 이상이어야 합니다.");
+            }
+
+            if ( timingOptions.ReadyTimeoutSeconds <= 0 )
+            {
+                throw new InvalidOperationException("MatchTiming:ReadyTimeoutSeconds는 1 이상이어야 합니다.");
+            }
+
+            if ( timingOptions.StartCountdownSeconds <= 0 )
+            {
+                throw new InvalidOperationException("MatchTiming:StartCountdownSeconds는 1 이상이어야 합니다.");
+            }
+
             TURN_DURATION = TimeSpan.FromSeconds(timingOptions.TurnDurationSeconds);
             MAX_TIMEOUTS_PER_PLAYER = timingOptions.MaxTimeoutsPerPlayer;
+            JOIN_TIMEOUT = TimeSpan.FromSeconds(timingOptions.JoinTimeoutSeconds);
+            READY_TIMEOUT = TimeSpan.FromSeconds(timingOptions.ReadyTimeoutSeconds);
+            START_COUNTDOWN = TimeSpan.FromSeconds(timingOptions.StartCountdownSeconds);
         }
 
         public MatchRoom Create(
@@ -44,7 +65,10 @@ namespace DotsAndBoxes.Server.Matches
                 playerTwo ,
                 resolvedStartingPlayerIndex ,
                 TURN_DURATION ,
-                MAX_TIMEOUTS_PER_PLAYER);
+                MAX_TIMEOUTS_PER_PLAYER ,
+                joinTimeout: JOIN_TIMEOUT ,
+                readyTimeout: READY_TIMEOUT ,
+                startCountdown: START_COUNTDOWN);
         }
     }
 }

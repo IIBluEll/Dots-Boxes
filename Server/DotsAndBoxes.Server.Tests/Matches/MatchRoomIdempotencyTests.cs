@@ -9,8 +9,9 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public async Task ConfirmEdge_WithSameRequest_ReturnsCachedResponse()
         {
-            MatchRoom room = CreateRoom();
-            ConfirmEdgeRequest request = CreateRequest(room.MatchId, 0, 0, Guid.NewGuid());
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
+            ConfirmEdgeRequest request = CreateRequest(room.MatchId, 0, initialRevision, Guid.NewGuid());
 
             ConfirmEdgeResponse firstResponse =
                 await room.ConfirmEdge_async(room.PlayerOne.UserId, request);
@@ -22,23 +23,24 @@ namespace DotsAndBoxes.Server.Tests.Matches
             {
                 Assert.That(firstResponse.IsAccepted , Is.True);
                 Assert.That(secondResponse.IsAccepted , Is.True);
-                Assert.That(firstResponse.Snapshot!.Revision , Is.EqualTo(1));
-                Assert.That(secondResponse.Snapshot!.Revision , Is.EqualTo(1));
-                Assert.That(room.Revision , Is.EqualTo(1));
+                Assert.That(firstResponse.Snapshot!.Revision , Is.EqualTo(initialRevision + 1));
+                Assert.That(secondResponse.Snapshot!.Revision , Is.EqualTo(initialRevision + 1));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + 1));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithSameRequestIdAndDifferentContent_ReturnsConflict()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
             Guid requestId = Guid.NewGuid();
 
             ConfirmEdgeRequest firstRequest =
-                CreateRequest(room.MatchId, 0, 0, requestId);
+                CreateRequest(room.MatchId, 0, initialRevision, requestId);
 
             ConfirmEdgeRequest changedRequest =
-                CreateRequest(room.MatchId, 1, 0, requestId);
+                CreateRequest(room.MatchId, 1, initialRevision, requestId);
 
             ConfirmEdgeResponse firstResponse =
                 await room.ConfirmEdge_async(room.PlayerOne.UserId, firstRequest);
@@ -57,16 +59,17 @@ namespace DotsAndBoxes.Server.Tests.Matches
                 Assert.That(changedResponse.Snapshot , Is.Not.Null);
                 Assert.That(changedResponse.Snapshot!.EdgeOwners[ 0 ] , Is.EqualTo(PLAYER_INDEX_ENUM.PLAYER_ONE));
                 Assert.That(changedResponse.Snapshot.EdgeOwners[ 1 ] , Is.EqualTo(PLAYER_INDEX_ENUM.NONE));
-                Assert.That(room.Revision , Is.EqualTo(1));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + 1));
             });
         }
 
         [Test]
         public async Task ConfirmEdge_WithConcurrentSameRequests_ChangesStateOnlyOnce()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
             ConfirmEdgeRequest request =
-                CreateRequest(room.MatchId, 0, 0, Guid.NewGuid());
+                CreateRequest(room.MatchId, 0, initialRevision, Guid.NewGuid());
 
             TaskCompletionSource<bool> startSignal =
                 new TaskCompletionSource<bool>(
@@ -105,10 +108,10 @@ namespace DotsAndBoxes.Server.Tests.Matches
                     Is.True);
 
                 Assert.That(
-                    responses.All(response => response.Snapshot!.Revision == 1) ,
+                    responses.All(response => response.Snapshot!.Revision == initialRevision + 1) ,
                     Is.True);
 
-                Assert.That(room.Revision , Is.EqualTo(1));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + 1));
                 Assert.That(confirmedEdgeCount , Is.EqualTo(1));
                 Assert.That(snapshot.EdgeOwners[ 0 ] , Is.EqualTo(PLAYER_INDEX_ENUM.PLAYER_ONE));
             });
@@ -117,7 +120,8 @@ namespace DotsAndBoxes.Server.Tests.Matches
         [Test]
         public async Task ConfirmEdge_AfterManyRejectedRequests_AllowsValidRequest()
         {
-            MatchRoom room = CreateRoom();
+            MatchRoom room = await CreateRoom_async();
+            long initialRevision = room.Revision;
 
             for ( int requestIndex = 0; requestIndex < 200; requestIndex++ )
             {
@@ -151,23 +155,13 @@ namespace DotsAndBoxes.Server.Tests.Matches
             Assert.Multiple(() =>
             {
                 Assert.That(validResponse.IsAccepted , Is.True);
-                Assert.That(room.Revision , Is.EqualTo(1));
+                Assert.That(room.Revision , Is.EqualTo(initialRevision + 1));
             });
         }
 
-        private static MatchRoom CreateRoom()
+        private static Task<MatchRoom> CreateRoom_async()
         {
-            MatchPlayer playerOne =
-                new MatchPlayer(Guid.NewGuid());
-
-            MatchPlayer playerTwo =
-                new MatchPlayer(Guid.NewGuid());
-
-            return new MatchRoom(
-                Guid.NewGuid() ,
-                playerOne ,
-                playerTwo ,
-                PLAYER_INDEX_ENUM.PLAYER_ONE);
+            return ActiveMatchRoomTestFactory.Create_async();
         }
 
         private static ConfirmEdgeRequest CreateRequest(

@@ -4,7 +4,7 @@ namespace DotsAndBoxes.Shared
 {
     public sealed class MatchSnapshot
     {
-        public const int CURRENT_SCHEMA_VERSION = 2;
+        public const int CURRENT_SCHEMA_VERSION = 3;
 
         public int SchemaVersion { get; set; } = CURRENT_SCHEMA_VERSION;
         public Guid MatchId { get; set; }
@@ -14,6 +14,12 @@ namespace DotsAndBoxes.Shared
         public Guid PlayerOneUserId { get; set; }
         public Guid PlayerTwoUserId { get; set; }
         public PLAYER_INDEX_ENUM CurrentPlayerIndex { get; set; } = PLAYER_INDEX_ENUM.NONE;
+
+        public bool PlayerOneReady { get; set; }
+        public bool PlayerTwoReady { get; set; }
+        public DateTimeOffset? JoinDeadlineUtc { get; set; }
+        public DateTimeOffset? ReadyDeadlineUtc { get; set; }
+        public DateTimeOffset? MatchStartUtc { get; set; }
 
         public PLAYER_INDEX_ENUM[] EdgeOwners { get; set; } = Array.Empty<PLAYER_INDEX_ENUM>();
         public PLAYER_INDEX_ENUM[] BoxOwners { get; set; } = Array.Empty<PLAYER_INDEX_ENUM>();
