@@ -53,6 +53,16 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
+        private void Update()
+        {
+            if ( _gameBoardPresenter == null )
+            {
+                return;
+            }
+
+            _gameBoardPresenter.Tick(DateTimeOffset.UtcNow);
+        }
+
         private void OnEnable()
         {
             if ( _hasStarted )
@@ -148,9 +158,16 @@ namespace DotsAndBoxes.Gameplay
 
         private async Task StartOnlineSession_async()
         {
+            IGameSession session = _gameSession;
+            CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
+
             try
             {
-                await _gameSession.Start_async(_destroyCancellationTokenSource.Token);
+                await session.Start_async(cancellationToken);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                await session.Ready_async(cancellationToken);
             }
             catch ( OperationCanceledException )
             {

@@ -61,6 +61,25 @@ namespace DotsAndBoxes.Gameplay
             return Task.CompletedTask;
         }
 
+        public Task Ready_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            if (!_isStarted)
+            {
+                InvalidOperationException exception = new InvalidOperationException("시작되지 않은 Session은 Ready 할 수 없음");
+
+                return Task.FromException(exception);
+            }
+
+            return Task.CompletedTask;
+        }
+
         public Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();

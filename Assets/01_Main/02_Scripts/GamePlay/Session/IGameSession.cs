@@ -21,6 +21,8 @@ namespace DotsAndBoxes.Gameplay
         MatchSnapshot CurrentSnapshot { get; }
 
         Task Start_async(CancellationToken cancellationToken = default);
+        Task Ready_async(CancellationToken cancellationToken = default);
+
         Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default);
         Task<MatchSnapshot> RequestSync_async(CancellationToken cancellationToken = default);
     }

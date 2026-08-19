@@ -1,4 +1,5 @@
 using DotsAndBoxes.Shared;
+using System;
 
 namespace DotsAndBoxes.Gameplay
 {
@@ -17,6 +18,9 @@ namespace DotsAndBoxes.Gameplay
         public bool HasPreview => PreviewEdgeId != NO_PREVIEW_EDGE_ID;
         public bool HasServerSnapshot => _currentSnapshot != null;
         public long Revision => HasServerSnapshot ? _currentSnapshot.Revision : NO_REVISION;
+        public DateTimeOffset? MatchStartUtc => HasServerSnapshot ? _currentSnapshot.MatchStartUtc : null;
+
+        public DateTimeOffset? TurnDeadLineUtc => HasServerSnapshot ? _currentSnapshot.TurnDeadlineUtc : null;
 
         public SERVER_MATCH_STATE_ENUM MatchState
         {
@@ -124,6 +128,41 @@ namespace DotsAndBoxes.Gameplay
         public bool IsBoxOwned(int boxId)
         {
             return GetBoxOwner(boxId) != PLAYER_INDEX_ENUM.NONE;
+        }
+
+        public int GetStartCountdownNumber(DateTimeOffset utcNow)
+        {
+            if ( MatchState != SERVER_MATCH_STATE_ENUM.STARTING ||
+                 !MatchStartUtc.HasValue )
+            {
+                return 0;
+            }
+
+            TimeSpan remainingTime = MatchStartUtc.Value - utcNow;
+
+            if ( remainingTime <= TimeSpan.Zero )
+            {
+                return 0;
+            }
+
+            return (int)Math.Ceiling(remainingTime.TotalSeconds);
+        }
+
+        public int GetTurnCountdownNumber(DateTimeOffset utcNow)
+        {
+            if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE || !TurnDeadLineUtc.HasValue )
+            {
+                return 0;
+            }
+
+            TimeSpan remainingTime = TurnDeadLineUtc.Value - utcNow;
+
+            if ( remainingTime <= TimeSpan.Zero )
+            {
+                return 0;
+            }
+
+            return (int)Math.Ceiling(remainingTime.TotalSeconds);
         }
 
         public bool TrySetPreviewEdge(int edgeId)

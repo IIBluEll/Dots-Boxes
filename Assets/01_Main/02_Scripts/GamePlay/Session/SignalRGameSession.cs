@@ -18,6 +18,7 @@ namespace DotsAndBoxes.Gameplay
         private IDisposable _matchStateChangedSubscription;
         private SynchronizationContext _unitySynchronizationContext;
         private bool _isStarted;
+        private bool _isReady;
         private bool _isDisposed;
         private bool _hasSimulatedConfirmResponseLoss;
 
@@ -152,6 +153,27 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
+        public async Task Ready_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotStarted();
+
+            if(_isReady)
+            {
+                return;
+            }
+
+            MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>("ReadyMatch", MatchId, cancellationToken);
+
+            if(snapshot == null)
+            {
+                throw new InvalidOperationException("Ready SnapShot을 받지 못함");
+            }
+
+            ReceiveSnapshot(snapshot);
+            _isReady = true;
+        }
+
         public async Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
@@ -220,6 +242,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            _isReady = false;
             PENDING_CONFIRM_REQUEST_STORE.Clear();
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
             _isDisposed = true;
@@ -243,6 +266,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            _isReady = false;
             PENDING_CONFIRM_REQUEST_STORE.Clear();
 
             GAME_SESSION_CONNECTION_STATE_ENUM connectionState = exception == null

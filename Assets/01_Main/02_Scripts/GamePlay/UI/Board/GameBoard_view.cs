@@ -44,6 +44,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private TMP_Text _playerOneScoreTxt;
         [SerializeField] private TMP_Text _playerTwoScoreTxt;
         [SerializeField] private TMP_Text _turnTxt;
+        [SerializeField] private TMP_Text _turnTimerTxt;
         [SerializeField] private TMP_Text _connectionStateTxt;
 
         private BoardEdgeButton[] _edgeButtons;
@@ -123,12 +124,33 @@ namespace DotsAndBoxes.Gameplay
             _playerTwoScoreTxt.text = $"PLAYER 2 : {playerTwoScore}";
         }
 
+        public void ShowMatchStatus(string status)
+        {
+            _turnTxt.text = status;
+            _turnTxt.color = Color.white;
+        }
+
         public void ShowCurrentTurn(PLAYER_INDEX_ENUM currentPlayerIndex)
         {
             bool isPlayerOneTurn = currentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE;
 
             _turnTxt.text = isPlayerOneTurn ? "PLAYER 1 TURN" : "PLAYER 2 TURN";
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
+        }
+
+        public void SetTurnTimerVisible(bool isVisible)
+        {
+            if ( _turnTimerTxt.gameObject.activeSelf == isVisible )
+            {
+                return;
+            }
+
+            _turnTimerTxt.gameObject.SetActive(isVisible);
+        }
+
+        public void ShowTurnTimer(int turnCountdownNumber)
+        {
+            _turnTimerTxt.text = $"TIME : {turnCountdownNumber}";
         }
 
         public void SetConnectionStateVisible(bool isVisible)
@@ -374,14 +396,15 @@ namespace DotsAndBoxes.Gameplay
         private bool ValidateReferences()
         {
             bool isValid = _boardRootRectTrans != null &&
-                           _dotPrefabImg != null &&
-                           _boxPrefabImg != null &&
-                           _edgePrefabBtn != null &&
-                           _confirmBtn != null &&
-                           _playerOneScoreTxt != null &&
-                           _playerTwoScoreTxt != null &&
-                           _turnTxt != null &&
-                           _connectionStateTxt != null;
+               _dotPrefabImg != null &&
+               _boxPrefabImg != null &&
+               _edgePrefabBtn != null &&
+               _confirmBtn != null &&
+               _playerOneScoreTxt != null &&
+               _playerTwoScoreTxt != null &&
+               _turnTxt != null &&
+               _turnTimerTxt != null &&
+               _connectionStateTxt != null;
 
             if (!isValid)
             {

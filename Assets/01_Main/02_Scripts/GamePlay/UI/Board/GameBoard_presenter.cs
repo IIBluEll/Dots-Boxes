@@ -102,6 +102,23 @@ namespace DotsAndBoxes.Gameplay
             return true;
         }
 
+        public void Tick(DateTimeOffset utcNow)
+        {
+            ThrowIfDisposed();
+
+            if ( !_isOpen )
+            {
+                return;
+            }
+
+            if ( _model.MatchState != SERVER_MATCH_STATE_ENUM.STARTING && _model.MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
+            {
+                return;
+            }
+
+            RefreshMatchState(utcNow);
+        }
+
         private void BindEvents()
         {
             if ( _isBound )
@@ -184,7 +201,75 @@ namespace DotsAndBoxes.Gameplay
         private void RefreshStatus()
         {
             _view.ShowScores(_model.PlayerOneScore , _model.PlayerTwoScore);
+            RefreshMatchState(DateTimeOffset.UtcNow);
+        }
+
+        private void RefreshMatchState(DateTimeOffset utcNow)
+        {
+            _view.SetTurnTimerVisible(false);
+
+            switch ( _model.MatchState )
+            {
+                case SERVER_MATCH_STATE_ENUM.NONE:
+                    _view.ShowMatchStatus("WAITING FOR SERVER...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS:
+                    _view.ShowMatchStatus("WAITING FOR PLAYERS...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY:
+                    _view.ShowMatchStatus("WAITING FOR READY...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.STARTING:
+                    RefreshStartingStatus(utcNow);
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.ACTIVE:
+                    RefreshActiveStatus(utcNow);
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.FINISHED:
+                    _view.ShowMatchStatus("GAME FINISHED");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.CANCELLED:
+                    _view.ShowMatchStatus("MATCH CANCELLED");
+                    break;
+
+                default:
+                    _view.ShowMatchStatus("UNKNOWN MATCH STATE");
+                    break;
+            }
+        }
+
+        private void RefreshStartingStatus(DateTimeOffset utcNow)
+        {
+            int countdownNumber = _model.GetStartCountdownNumber(utcNow);
+
+            if ( countdownNumber <= 0 )
+            {
+                _view.ShowMatchStatus("STARTING...");
+                return;
+            }
+
+            _view.ShowMatchStatus(countdownNumber.ToString());
+        }
+
+        private void RefreshActiveStatus(DateTimeOffset utcNow)
+        {
             _view.ShowCurrentTurn(_model.CurrentPlayerIndex);
+
+            if ( !_model.TurnDeadLineUtc.HasValue )
+            {
+                return;
+            }
+
+            int turnCountdownNumber = _model.GetTurnCountdownNumber(utcNow);
+
+            _view.SetTurnTimerVisible(true);
+            _view.ShowTurnTimer(turnCountdownNumber);
         }
 
         private void RefreshConnectionState()
