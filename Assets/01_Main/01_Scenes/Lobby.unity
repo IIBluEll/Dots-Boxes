@@ -448,6 +448,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 127653090}
   m_CullTransparentMesh: 1
+--- !u!1 &304980843
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 304980845}
+  - component: {fileID: 304980844}
+  m_Layer: 0
+  m_Name: OnlineSessionProvider
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &304980844
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304980843}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1d4a55ac9198f93439fd24202edcaa66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.OnlineSessionProvider
+--- !u!4 &304980845
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304980843}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -443.05725, y: 1761.0333, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &333349895
 GameObject:
   m_ObjectHideFlags: 0
@@ -1926,6 +1970,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1668635421}
   - component: {fileID: 1668635422}
+  - component: {fileID: 1668635423}
+  - component: {fileID: 1668635424}
   m_Layer: 5
   m_Name: SafeArea_Root
   m_TagString: Untagged
@@ -1967,6 +2013,35 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f600d14db4e43a499ca5d801f148179, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.SafeAreaFitter
+--- !u!114 &1668635423
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1668635420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b4ec296d1bdb3c41bc06daf9240d2a5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.MainLobby_view
+  _quickMatchBtn: {fileID: 1928459387}
+  _matchMakingCancelBtn: {fileID: 204044358705170325}
+  _waitMatchingRootObj: {fileID: 346220493}
+--- !u!114 &1668635424
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1668635420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5118e9e2ad510874c8fe3aad7cb8abc6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.MainLobbyUI
+  _view: {fileID: 1668635423}
+  _serverUrl: http://localhost:5049
 --- !u!1001 &1862512364
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2194,6 +2269,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: b4918ec8d1192fb45a7ad6139787cbe9, type: 3}
+--- !u!114 &1928459387 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2493614248610071239, guid: b4918ec8d1192fb45a7ad6139787cbe9, type: 3}
+  m_PrefabInstance: {fileID: 1928459386}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e29b1a8efbd4b44bb3f3716e73f07ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &2043667468
 GameObject:
   m_ObjectHideFlags: 0
@@ -2444,7 +2530,7 @@ GameObject:
   - component: {fileID: 204044358705170330}
   - component: {fileID: 204044358705170325}
   m_Layer: 5
-  m_Name: GoBack_Btn
+  m_Name: MatchMakingCancel_Btn
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2784,3 +2870,4 @@ SceneRoots:
   - {fileID: 1379165448}
   - {fileID: 64575}
   - {fileID: 792338954}
+  - {fileID: 304980845}

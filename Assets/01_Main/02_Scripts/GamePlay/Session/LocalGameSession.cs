@@ -80,6 +80,24 @@ namespace DotsAndBoxes.Gameplay
             return Task.CompletedTask;
         }
 
+        public Task<MatchSnapshot> Leave_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled<MatchSnapshot>(cancellationToken);
+            }
+
+            if ( !_isStarted )
+            {
+                return Task.FromException<MatchSnapshot>(
+                    new InvalidOperationException("게임 세션이 시작되지 않았습니다."));
+            }
+
+            return Task.FromResult(CurrentSnapshot);
+        }
+
         public Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();

@@ -22,6 +22,7 @@ namespace DotsAndBoxes.Gameplay
 
         Task Start_async(CancellationToken cancellationToken = default);
         Task Ready_async(CancellationToken cancellationToken = default);
+        Task<MatchSnapshot> Leave_async(CancellationToken cancellationToken = default);
 
         Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default);
         Task<MatchSnapshot> RequestSync_async(CancellationToken cancellationToken = default);

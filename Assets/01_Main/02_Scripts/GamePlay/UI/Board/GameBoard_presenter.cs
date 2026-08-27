@@ -18,6 +18,7 @@ namespace DotsAndBoxes.Gameplay
 
         public event Action<GAME_RESULT_ENUM, int, int> GameFinished;
         public event Action<Exception> SessionFailed;
+        public event Action LeaveRequested;
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
             : this(model , view , null)
@@ -70,6 +71,7 @@ namespace DotsAndBoxes.Gameplay
 
             GameFinished = null;
             SessionFailed = null;
+            LeaveRequested = null;
 
             _isConfirming = false;
             _isOpen = false;
@@ -128,6 +130,7 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected += OnEdgeSelected;
             _view.ConfirmRequested += OnConfirmRequested;
+            _view.LeaveRequested += OnLeaveRequested;
 
             if ( _session != null )
             {
@@ -147,6 +150,7 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected -= OnEdgeSelected;
             _view.ConfirmRequested -= OnConfirmRequested;
+            _view.LeaveRequested -= OnLeaveRequested;
 
             if ( _session != null )
             {
@@ -369,6 +373,16 @@ namespace DotsAndBoxes.Gameplay
 
             _view.ShowConnectionState(connectionState);
             RefreshView();
+        }
+
+        private void OnLeaveRequested()
+        {
+            if ( _isDisposed || !_isOpen )
+            {
+                return;
+            }
+
+            LeaveRequested?.Invoke();
         }
 
         private void ConfirmLocalPreview()

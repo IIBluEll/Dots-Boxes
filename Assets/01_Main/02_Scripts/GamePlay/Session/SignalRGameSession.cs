@@ -17,8 +17,10 @@ namespace DotsAndBoxes.Gameplay
         private HubConnection _connection;
         private IDisposable _matchStateChangedSubscription;
         private SynchronizationContext _unitySynchronizationContext;
+
         private bool _isStarted;
         private bool _isReady;
+        private bool _hasLeft;
         private bool _isDisposed;
         private bool _hasSimulatedConfirmResponseLoss;
 
@@ -174,6 +176,33 @@ namespace DotsAndBoxes.Gameplay
             _isReady = true;
         }
 
+        public async Task<MatchSnapshot> Leave_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotStarted();
+
+            if ( _hasLeft )
+            {
+                return CurrentSnapshot;
+            }
+
+            MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>(
+        "LeaveMatch",
+        MatchId,
+        cancellationToken);
+
+            if ( snapshot == null )
+            {
+                throw new InvalidOperationException("LeaveMatch 응답 Snapshot이 없습니다.");
+            }
+
+            _hasLeft = true;
+            _isReady = false;
+
+            ReceiveSnapshot(snapshot);
+
+            return snapshot;
+        }
         public async Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
@@ -243,8 +272,12 @@ namespace DotsAndBoxes.Gameplay
 
             _isStarted = false;
             _isReady = false;
+            _hasLeft = false;
+            
             PENDING_CONFIRM_REQUEST_STORE.Clear();
+
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
+            
             _isDisposed = true;
 
             SnapshotChanged = null;

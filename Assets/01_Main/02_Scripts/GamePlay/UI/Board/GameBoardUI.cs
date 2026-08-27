@@ -3,12 +3,15 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DotsAndBoxes.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class GameBoardUI : MonoBehaviour
     {
+        private const string LOBBY_SCENE_NAME = "Lobby";
+
         [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
         [SerializeField] private ResultUI _resultUI;
@@ -26,11 +29,22 @@ namespace DotsAndBoxes.Gameplay
         private GameBoard_Presenter _gameBoardPresenter;
         private IGameSession _gameSession;
         private CancellationTokenSource _destroyCancellationTokenSource;
+
         private bool _hasStarted;
+        private bool _ownsGameSession;
+        private bool _isLeaving;
 
         private void Awake()
         {
-            if ( !ApplyCommandLineOptions() || !ValidateReferences() )
+            if ( !ApplyCommandLineOptions() )
+            {
+                enabled = false;
+                return;
+            }
+
+            ApplyPreparedGameSession();
+
+            if ( !ValidateReferences() )
             {
                 enabled = false;
                 return;
@@ -47,7 +61,7 @@ namespace DotsAndBoxes.Gameplay
             _hasStarted = true;
             Open();
 
-            if ( _gameSession != null )
+            if ( _gameSession != null && _ownsGameSession )
             {
                 _ = StartOnlineSession_async();
             }
@@ -114,7 +128,7 @@ namespace DotsAndBoxes.Gameplay
         {
             _gameBoardModel = new GameBoard_Model();
 
-            if ( _useOnlineSession )
+            if ( _gameSession == null && _useOnlineSession )
             {
                 Guid matchId = Guid.Parse(_matchId);
                 Guid userId = Guid.Parse(_userId);
@@ -124,6 +138,12 @@ namespace DotsAndBoxes.Gameplay
                     matchId ,
                     userId ,
                     _simulateConfirmResponseLossOnce);
+
+                _ownsGameSession = true;
+            }
+
+            if ( _gameSession != null )
+            {
                 _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
                 _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
                 _gameBoardPresenter.SessionFailed += OnSessionFailed;
@@ -134,6 +154,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _gameBoardPresenter.GameFinished += OnGameFinished;
+            _gameBoardPresenter.LeaveRequested += OnLeaveRequested;
         }
 
         private void ReleaseGameBoard()
@@ -141,6 +162,7 @@ namespace DotsAndBoxes.Gameplay
             if ( _gameBoardPresenter != null )
             {
                 _gameBoardPresenter.GameFinished -= OnGameFinished;
+                _gameBoardPresenter.LeaveRequested -= OnLeaveRequested;
                 _gameBoardPresenter.SessionFailed -= OnSessionFailed;
                 _gameBoardPresenter.Dispose();
                 _gameBoardPresenter = null;
@@ -149,11 +171,31 @@ namespace DotsAndBoxes.Gameplay
             if ( _gameSession != null )
             {
                 _gameSession.ConnectionStateChanged -= OnConnectionStateChanged;
-                _gameSession.Dispose();
+
+                if ( _ownsGameSession )
+                {
+                    _gameSession.Dispose();
+                }
+
                 _gameSession = null;
+                _ownsGameSession = false;
             }
 
             _gameBoardModel = null;
+        }
+
+        private void ApplyPreparedGameSession()
+        {
+            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+
+            if ( sessionProvider == null || !sessionProvider.HasGameSession )
+            {
+                return;
+            }
+
+            _gameSession = sessionProvider.GameSession;
+            _ownsGameSession = false;
+            _useOnlineSession = true;
         }
 
         private async Task StartOnlineSession_async()
@@ -208,6 +250,61 @@ namespace DotsAndBoxes.Gameplay
             Debug.Log($"[Game Session] ConnectionState={connectionState}" , this);
         }
 
+        private void OnLeaveRequested()
+        {
+            if ( _isLeaving )
+            {
+                return;
+            }
+
+            _ = LeaveGame_async();
+        }
+
+        private async Task LeaveGame_async()
+        {
+            _isLeaving = true;
+
+            _gameBoardPresenter?.Close();
+            _resultUI?.Close();
+
+            CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
+
+            try
+            {
+                if ( _gameSession != null )
+                {
+                    await _gameSession.Leave_async(cancellationToken);
+                }
+            }
+            catch ( OperationCanceledException )
+            {
+                return;
+            }
+            catch ( Exception exception )
+            {
+                if ( this != null )
+                {
+                    Debug.LogException(exception , this);
+                }
+            }
+
+            if ( this == null )
+            {
+                return;
+            }
+
+            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+
+            if ( _gameSession != null &&
+                 sessionProvider != null &&
+                 ReferenceEquals(sessionProvider.GameSession , _gameSession) )
+            {
+                sessionProvider.ResetGameSession();
+            }
+
+            SceneManager.LoadScene(LOBBY_SCENE_NAME);
+        }
+
         private void OnRestartRequested()
         {
             if ( _gameSession != null )
@@ -231,7 +328,7 @@ namespace DotsAndBoxes.Gameplay
                 return false;
             }
 
-            if ( !_useOnlineSession )
+            if ( _gameSession != null || !_useOnlineSession )
             {
                 return true;
             }

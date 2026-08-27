@@ -33,6 +33,7 @@ namespace DotsAndBoxes.Gameplay
 
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _confirmBtn;
+        [SerializeField] private Button _leaveBtn;
 
         [Space(5f), Header("Player Colors")]
         [SerializeField] private Color _playerOneEdgeColor = new Color(0.1f, 0.45f, 1f, 1f);
@@ -55,7 +56,7 @@ namespace DotsAndBoxes.Gameplay
 
         public event Action<int> EdgeSelected;
         public event Action ConfirmRequested;
-
+        public event Action LeaveRequested;
         private void Awake()
         {
             if (!ValidateReferences())
@@ -67,6 +68,8 @@ namespace DotsAndBoxes.Gameplay
             BuildBoard();
 
             _confirmBtn.onClick.AddListener(OnConfirmButtonClicked);
+            _leaveBtn.onClick.AddListener(OnLeaveButtonClicked);
+
             SetConfirmInteractable(false);
         }
 
@@ -80,6 +83,11 @@ namespace DotsAndBoxes.Gameplay
             if ( _confirmBtn != null )
             {
                 _confirmBtn.onClick.RemoveListener(OnConfirmButtonClicked);
+            }
+
+            if ( _leaveBtn != null )
+            {
+                _leaveBtn.onClick.RemoveListener(OnLeaveButtonClicked);
             }
 
             for (int i = 0; i < _edgeButtons.Length; i++)
@@ -388,6 +396,12 @@ namespace DotsAndBoxes.Gameplay
         {
             ConfirmRequested?.Invoke();
         }
+
+        private void OnLeaveButtonClicked()
+        {
+            LeaveRequested?.Invoke();
+        }
+
         private void OnEdgeSelected(int edgeId)
         {
             EdgeSelected?.Invoke(edgeId);
@@ -404,6 +418,7 @@ namespace DotsAndBoxes.Gameplay
                _playerTwoScoreTxt != null &&
                _turnTxt != null &&
                _turnTimerTxt != null &&
+               _leaveBtn != null &&
                _connectionStateTxt != null;
 
             if (!isValid)
