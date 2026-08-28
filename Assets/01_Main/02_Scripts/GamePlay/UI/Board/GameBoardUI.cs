@@ -11,6 +11,8 @@ namespace DotsAndBoxes.Gameplay
     public sealed class GameBoardUI : MonoBehaviour
     {
         private const string LOBBY_SCENE_NAME = "Lobby";
+        private const string CONNECTION_LOST_TITLE = "CONNECTION LOST";
+        private const string CONNECTION_LOST_MESSAGE = "서버와 연결이 끊어졌습니다.\nLobby로 이동해 주세요.";
 
         [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
@@ -51,8 +53,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _destroyCancellationTokenSource = new CancellationTokenSource();
-            _resultUI.RestartRequested += OnRestartRequested;
             _resultUI.LobbyRequested += OnLobbyRequested;
+            _resultUI.LeaveConfirmed += OnLeaveConfirmedActioned;
 
             CreateGameBoard();
         }
@@ -100,8 +102,8 @@ namespace DotsAndBoxes.Gameplay
 
             if ( _resultUI != null )
             {
-                _resultUI.RestartRequested -= OnRestartRequested;
                 _resultUI.LobbyRequested -= OnLobbyRequested;
+                _resultUI.LeaveConfirmed -= OnLeaveConfirmedActioned;
             }
 
             ReleaseGameBoard();
@@ -245,14 +247,46 @@ namespace DotsAndBoxes.Gameplay
         private void OnSessionFailed(Exception exception)
         {
             Debug.LogException(exception , this);
+            ShowConnectionErrorIfNeeded();
         }
 
         private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
         {
             Debug.Log($"[Game Session] ConnectionState={connectionState}" , this);
+            ShowConnectionErrorIfNeeded();
+        }
+
+        private void ShowConnectionErrorIfNeeded()
+        {
+            if ( _isLeaving ||
+                 _gameSession == null ||
+                 _gameBoardModel == null ||
+                 _gameBoardModel.IsGameFinished )
+            {
+                return;
+            }
+
+            bool isConnectionLost = _gameSession.ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED || _gameSession.ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED;
+
+            if ( !isConnectionLost )
+            {
+                return;
+            }
+
+            _resultUI.ShowMessage(CONNECTION_LOST_TITLE , CONNECTION_LOST_MESSAGE);
         }
 
         private void OnLeaveRequested()
+        {
+            if ( _isLeaving )
+            {
+                return;
+            }
+
+            _resultUI.ShowLeaveConfirmation();
+        }
+
+        private void OnLeaveConfirmedActioned()
         {
             if ( _isLeaving )
             {
@@ -319,21 +353,6 @@ namespace DotsAndBoxes.Gameplay
             }
 
             SceneManager.LoadScene(LOBBY_SCENE_NAME);
-        }
-
-        private void OnRestartRequested()
-        {
-            if ( _gameSession != null )
-            {
-                Debug.LogWarning("온라인 재대전은 아직 구현되지 않았습니다." , this);
-                return;
-            }
-
-            ReleaseGameBoard();
-            _gameBoardView.Clear();
-
-            CreateGameBoard();
-            _gameBoardPresenter.Open();
         }
 
         private bool ValidateReferences()

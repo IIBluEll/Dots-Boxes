@@ -30,6 +30,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _availableEdgeColor = new Color(0.31f, 0.31f, 0.31f, 1f);
         [SerializeField] private Color _availableBoxColor = new Color(0.55f, 0.55f, 0.55f, 0.56f);
         [SerializeField] private Color _localPreviewEdgeColor = new Color(0.15f, 0.85f, 1f, 1f);
+        [SerializeField, Range(0f , 1f)] private float _opponentPreviewAlpha = 0.55f;
 
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _confirmBtn;
@@ -210,6 +211,16 @@ namespace DotsAndBoxes.Gameplay
         {
             BoardEdgeButton edgeBtn = GetEdgeButton(edgeId);
             edgeBtn.SetVisual(_localPreviewEdgeColor, true);
+        }
+
+        public void ShowOpponentPreviewEdge(int edgeId , PLAYER_INDEX_ENUM opponentPlayerIndex)
+        {
+            Color previewColor = opponentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                ? _playerOneEdgeColor
+                : _playerTwoEdgeColor;
+
+            previewColor.a = _opponentPreviewAlpha;
+            GetEdgeButton(edgeId).SetVisual(previewColor , false);
         }
 
         private void BuildBoard()

@@ -299,8 +299,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: f92dd4ebdfaaa7e4fa44d1eb54d6a16c, type: 2}
+  m_sharedMaterial: {fileID: -1087365325220312866, guid: f92dd4ebdfaaa7e4fa44d1eb54d6a16c, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -527,7 +527,7 @@ GameObject:
   - component: {fileID: 426255731}
   - component: {fileID: 426255730}
   m_Layer: 5
-  m_Name: RestartBtn
+  m_Name: CancelBtn
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -709,6 +709,7 @@ MonoBehaviour:
   _availableEdgeColor: {r: 0.31, g: 0.31, b: 0.31, a: 1}
   _availableBoxColor: {r: 0.55, g: 0.55, b: 0.55, a: 0.56}
   _localPreviewEdgeColor: {r: 0.15, g: 0.85, b: 1, a: 1}
+  _opponentPreviewAlpha: 0.55
   _confirmBtn: {fileID: 1040791058}
   _leaveBtn: {fileID: 850480180}
   _playerOneEdgeColor: {r: 0.1, g: 0.45, b: 1, a: 1}
@@ -814,8 +815,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.Result_View
   _resultTxt: {fileID: 1618580884}
   _finalScoreTxt: {fileID: 166179631}
-  _restartBtn: {fileID: 426255730}
   _lobbyBtn: {fileID: 26592071}
+  _cancelBtn: {fileID: 426255730}
   _playerOneResultColor: {r: 0.1, g: 0.45, b: 1, a: 1}
   _playerTwoResultColor: {r: 1, g: 0.4, b: 0.1, a: 1}
   _drawResultColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1576,7 +1577,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1173824438}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -1608,7 +1609,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Restart
+  m_text: Cancel
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2068,8 +2069,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: f92dd4ebdfaaa7e4fa44d1eb54d6a16c, type: 2}
+  m_sharedMaterial: {fileID: -1087365325220312866, guid: f92dd4ebdfaaa7e4fa44d1eb54d6a16c, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []

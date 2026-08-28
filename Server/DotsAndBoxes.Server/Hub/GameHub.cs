@@ -377,6 +377,79 @@ namespace DotsAndBoxes.Server.Hubs
             return response;
         }
 
+        public async Task<MATCH_COMMAND_ERROR_ENUM> SetPreviewEdge(
+            PreviewEdgeRequest request)
+        {
+            if ( request == null )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.INVALID_REQUEST;
+            }
+
+            if ( !TryGetAuthenticatedUserId(out Guid userId) )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.UNAUTHORIZED;
+            }
+
+            bool isRegisteredParticipant = MATCH_CONNECTION_REGISTRY.TryGetParticipant(
+                Context.ConnectionId ,
+                out Guid registeredMatchId ,
+                out Guid registeredUserId);
+
+            if ( !isRegisteredParticipant || registeredMatchId != request.MatchId || registeredUserId != userId )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.NOT_A_MATCH_PLAYER;
+            }
+
+            if ( !MATCH_ROOM_PROVIDER.TryGet(request.MatchId , out MatchRoom? matchRoom) || matchRoom == null )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_FOUND;
+            }
+
+            MatchRoomPreviewResult result = await matchRoom.TrySetPreviewEdge_async(
+                userId ,
+                request ,
+                Context.ConnectionAborted);
+
+            if ( !result.IsAccepted )
+            {
+                LOGGER.LogDebug(
+                    "PreviewEdge rejected. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, Sequence={Sequence}, EdgeId={EdgeId}, Error={Error}",
+                    request.MatchId ,
+                    userId ,
+                    request.ExpectedRevision ,
+                    request.PreviewSequence ,
+                    request.EdgeId ,
+                    result.Error);
+
+                return result.Error;
+            }
+
+            if ( result.Update == null )
+            {
+                LOGGER.LogError(
+                    "PreviewEdge accepted without update. MatchId={MatchId}, UserId={UserId}, Sequence={Sequence}",
+                    request.MatchId ,
+                    userId ,
+                    request.PreviewSequence);
+
+                return MATCH_COMMAND_ERROR_ENUM.INTERNAL_ERROR;
+            }
+
+            await Clients
+                .OthersInGroup(CreateMatchGroupName(request.MatchId))
+                .OpponentPreviewChanged(result.Update);
+
+            LOGGER.LogDebug(
+                "PreviewEdge broadcast. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, Sequence={Sequence}, EdgeId={EdgeId}",
+                request.MatchId ,
+                userId ,
+                result.Update.Revision ,
+                result.Update.PreviewSequence ,
+                result.Update.EdgeId);
+
+            return MATCH_COMMAND_ERROR_ENUM.NONE;
+        }
+
         public async Task<MatchSnapshot> RequestSync(Guid matchId)
         {
             if ( !TryGetAuthenticatedUserId(out Guid userId) )

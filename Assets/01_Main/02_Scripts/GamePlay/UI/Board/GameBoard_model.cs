@@ -11,11 +11,15 @@ namespace DotsAndBoxes.Gameplay
         private readonly GameSessionSnapshotStore SNAPSHOT_STORE = new GameSessionSnapshotStore();
 
         private MatchSnapshot _currentSnapshot;
+        private long _lastOpponentPreviewSequence;
 
         public DotsBoard Board { get; }
         public int PreviewEdgeId { get; private set; }
+        public int OpponentPreviewEdgeId { get; private set; }
+        public PLAYER_INDEX_ENUM OpponentPreviewPlayerIndex { get; private set; }
 
         public bool HasPreview => PreviewEdgeId != NO_PREVIEW_EDGE_ID;
+        public bool HasOpponentPreview => OpponentPreviewEdgeId != NO_PREVIEW_EDGE_ID;
         public bool HasServerSnapshot => _currentSnapshot != null;
         public long Revision => HasServerSnapshot ? _currentSnapshot.Revision : NO_REVISION;
         public DateTimeOffset? MatchStartUtc => HasServerSnapshot ? _currentSnapshot.MatchStartUtc : null;
@@ -74,6 +78,8 @@ namespace DotsAndBoxes.Gameplay
         {
             Board = new DotsBoard(startingPlayerIndex);
             PreviewEdgeId = NO_PREVIEW_EDGE_ID;
+            OpponentPreviewEdgeId = NO_PREVIEW_EDGE_ID;
+            OpponentPreviewPlayerIndex = PLAYER_INDEX_ENUM.NONE;
         }
 
         public bool ApplySnapshot(MatchSnapshot snapshot)
@@ -87,6 +93,7 @@ namespace DotsAndBoxes.Gameplay
 
             _currentSnapshot = SNAPSHOT_STORE.CurrentSnapshot;
             ClearPreview();
+            ClearOpponentPreview();
             return true;
         }
 
@@ -186,6 +193,57 @@ namespace DotsAndBoxes.Gameplay
             return true;
         }
 
+        public bool TryClearPreviewEdge(int edgeId)
+        {
+            if ( PreviewEdgeId != edgeId )
+            {
+                return false;
+            }
+
+            ClearPreview();
+            return true;
+        }
+
+        public bool TryApplyOpponentPreview(OpponentPreviewUpdate update)
+        {
+            if ( update == null || !HasServerSnapshot )
+            {
+                return false;
+            }
+
+            if ( update.MatchId != _currentSnapshot.MatchId ||
+                 update.Revision != Revision ||
+                 update.PlayerIndex != CurrentPlayerIndex ||
+                 update.PreviewSequence <= _lastOpponentPreviewSequence )
+            {
+                return false;
+            }
+
+            if ( !update.HasPreview )
+            {
+                if ( update.EdgeId != OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID )
+                {
+                    return false;
+                }
+
+                _lastOpponentPreviewSequence = update.PreviewSequence;
+                ClearOpponentPreview(false);
+                return true;
+            }
+
+            if ( update.EdgeId < 0 ||
+                 update.EdgeId >= BoardTopology.EDGE_COUNT ||
+                 IsEdgeConfirmed(update.EdgeId) )
+            {
+                return false;
+            }
+
+            _lastOpponentPreviewSequence = update.PreviewSequence;
+            OpponentPreviewEdgeId = update.EdgeId;
+            OpponentPreviewPlayerIndex = update.PlayerIndex;
+            return true;
+        }
+
         public bool TryConfirmPreview(out MoveResult moveResult)
         {
             moveResult = null;
@@ -209,6 +267,17 @@ namespace DotsAndBoxes.Gameplay
         public void ClearPreview()
         {
             PreviewEdgeId = NO_PREVIEW_EDGE_ID;
+        }
+
+        public void ClearOpponentPreview(bool shouldResetSequence = true)
+        {
+            OpponentPreviewEdgeId = NO_PREVIEW_EDGE_ID;
+            OpponentPreviewPlayerIndex = PLAYER_INDEX_ENUM.NONE;
+
+            if ( shouldResetSequence )
+            {
+                _lastOpponentPreviewSequence = 0;
+            }
         }
     }
 }

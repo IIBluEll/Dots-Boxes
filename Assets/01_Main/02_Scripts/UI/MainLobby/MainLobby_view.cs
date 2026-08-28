@@ -1,7 +1,8 @@
-using UnityEngine;
 using HM.CodeBase;
-using UnityEngine.UI;
 using System;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace DotsAndBoxes.UI
 {
@@ -10,16 +11,21 @@ namespace DotsAndBoxes.UI
         [Header("Buttons")]
         [SerializeField] private Button _quickMatchBtn;
         [SerializeField] private Button _matchMakingCancelBtn;
+        [SerializeField] private Button _matchMakingErrorConfirmBtn;
 
         [Space(5f), Header("Roots")]
         [SerializeField] private GameObject _waitMatchingRootObj;
+        [SerializeField] private GameObject _matchMakingErrorRootObj;
+
+        [Space(5f), Header("Texts")]
+        [SerializeField] private TMP_Text _matchMakingErrorTxt;
 
         public event Action QuickMatchRequested;
         public event Action MatchMakingCancelRequested;
 
         private void Awake()
         {
-            if(!ValidateReferences())
+            if ( !ValidateReferences() )
             {
                 enabled = false;
                 return;
@@ -27,13 +33,14 @@ namespace DotsAndBoxes.UI
 
             _quickMatchBtn.onClick.AddListener(OnQuickMatchActioned);
             _matchMakingCancelBtn.onClick.AddListener(OnMatchMakingCancelActioned);
+            _matchMakingErrorConfirmBtn.onClick.AddListener(OnMatchMakingErrorConfirmActioned);
 
             Clear();
         }
 
         private void OnDestroy()
         {
-            if(_quickMatchBtn != null)
+            if ( _quickMatchBtn != null )
             {
                 _quickMatchBtn.onClick.RemoveListener(OnQuickMatchActioned);
             }
@@ -41,6 +48,11 @@ namespace DotsAndBoxes.UI
             if ( _matchMakingCancelBtn != null )
             {
                 _matchMakingCancelBtn.onClick.RemoveListener(OnMatchMakingCancelActioned);
+            }
+
+            if ( _matchMakingErrorConfirmBtn != null )
+            {
+                _matchMakingErrorConfirmBtn.onClick.RemoveListener(OnMatchMakingErrorConfirmActioned);
             }
 
             QuickMatchRequested = null;
@@ -52,6 +64,7 @@ namespace DotsAndBoxes.UI
             SetQuickMatchInteractable(true);
             SetMatchMakingCancelInteractable(true);
             SetWaitMatchingVisible(false);
+            SetMatchMakingErrorVisible(false);
         }
 
         public void SetQuickMatchInteractable(bool isInteractable)
@@ -69,6 +82,20 @@ namespace DotsAndBoxes.UI
             _waitMatchingRootObj.SetActive(isVisible);
         }
 
+        public void SetMatchMakingErrorVisible(bool isVisible)
+        {
+            _matchMakingErrorRootObj.SetActive(isVisible);
+        }
+
+        public void ShowMatchMakingError(string errorMessage)
+        {
+            _matchMakingErrorTxt.text = string.IsNullOrWhiteSpace(errorMessage)
+                ? "매칭 중 오류가 발생했습니다."
+                : errorMessage;
+
+            SetMatchMakingErrorVisible(true);
+        }
+
         private void OnQuickMatchActioned()
         {
             QuickMatchRequested?.Invoke();
@@ -79,9 +106,20 @@ namespace DotsAndBoxes.UI
             MatchMakingCancelRequested?.Invoke();
         }
 
+        private void OnMatchMakingErrorConfirmActioned()
+        {
+            SetMatchMakingErrorVisible(false);
+        }
+
         private bool ValidateReferences()
         {
-            bool isValid = _quickMatchBtn != null && _matchMakingCancelBtn != null && _waitMatchingRootObj != null;
+            bool isValid =
+                _quickMatchBtn != null &&
+                _matchMakingCancelBtn != null &&
+                _matchMakingErrorConfirmBtn != null &&
+                _waitMatchingRootObj != null &&
+                _matchMakingErrorRootObj != null &&
+                _matchMakingErrorTxt != null;
 
             if ( !isValid )
             {
@@ -92,4 +130,3 @@ namespace DotsAndBoxes.UI
         }
     }
 }
-

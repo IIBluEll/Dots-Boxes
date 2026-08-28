@@ -94,6 +94,89 @@ namespace DotsAndBoxes.Gameplay.Tests
         }
 
         [Test]
+        public void TryApplyOpponentPreview_WithValidUpdate_AppliesOpponentPreview()
+        {
+            GameBoard_Model model = new GameBoard_Model();
+            Guid matchId = Guid.NewGuid();
+            MatchSnapshot snapshot = CreateSnapshot(matchId , 4 , Guid.NewGuid() , Guid.NewGuid());
+            model.ApplySnapshot(snapshot);
+
+            OpponentPreviewUpdate update = CreateOpponentPreviewUpdate(
+                matchId ,
+                snapshot.Revision ,
+                1 ,
+                6);
+
+            bool isApplied = model.TryApplyOpponentPreview(update);
+
+            Assert.That(isApplied , Is.True);
+            Assert.That(model.HasOpponentPreview , Is.True);
+            Assert.That(model.OpponentPreviewEdgeId , Is.EqualTo(6));
+            Assert.That(model.OpponentPreviewPlayerIndex , Is.EqualTo(PLAYER_INDEX_ENUM.PLAYER_ONE));
+        }
+
+        [Test]
+        public void TryApplyOpponentPreview_WithOlderSequence_PreservesLatestPreview()
+        {
+            GameBoard_Model model = new GameBoard_Model();
+            Guid matchId = Guid.NewGuid();
+            MatchSnapshot snapshot = CreateSnapshot(matchId , 4 , Guid.NewGuid() , Guid.NewGuid());
+            model.ApplySnapshot(snapshot);
+
+            bool isLatestApplied = model.TryApplyOpponentPreview(
+                CreateOpponentPreviewUpdate(matchId , snapshot.Revision , 2 , 6));
+            bool isOlderApplied = model.TryApplyOpponentPreview(
+                CreateOpponentPreviewUpdate(matchId , snapshot.Revision , 1 , 7));
+
+            Assert.That(isLatestApplied , Is.True);
+            Assert.That(isOlderApplied , Is.False);
+            Assert.That(model.OpponentPreviewEdgeId , Is.EqualTo(6));
+        }
+
+        [Test]
+        public void TryApplyOpponentPreview_WithClearUpdate_ClearsOpponentPreview()
+        {
+            GameBoard_Model model = new GameBoard_Model();
+            Guid matchId = Guid.NewGuid();
+            MatchSnapshot snapshot = CreateSnapshot(matchId , 4 , Guid.NewGuid() , Guid.NewGuid());
+            model.ApplySnapshot(snapshot);
+            model.TryApplyOpponentPreview(
+                CreateOpponentPreviewUpdate(matchId , snapshot.Revision , 1 , 6));
+
+            OpponentPreviewUpdate clearUpdate = CreateOpponentPreviewUpdate(
+                matchId ,
+                snapshot.Revision ,
+                2 ,
+                OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID);
+            clearUpdate.HasPreview = false;
+
+            bool isApplied = model.TryApplyOpponentPreview(clearUpdate);
+
+            Assert.That(isApplied , Is.True);
+            Assert.That(model.HasOpponentPreview , Is.False);
+            Assert.That(model.OpponentPreviewPlayerIndex , Is.EqualTo(PLAYER_INDEX_ENUM.NONE));
+        }
+
+        [Test]
+        public void ApplySnapshot_WithNewRevision_ClearsOpponentPreview()
+        {
+            GameBoard_Model model = new GameBoard_Model();
+            Guid matchId = Guid.NewGuid();
+            Guid playerOneUserId = Guid.NewGuid();
+            Guid playerTwoUserId = Guid.NewGuid();
+            MatchSnapshot revisionFour = CreateSnapshot(matchId , 4 , playerOneUserId , playerTwoUserId);
+            model.ApplySnapshot(revisionFour);
+            model.TryApplyOpponentPreview(
+                CreateOpponentPreviewUpdate(matchId , revisionFour.Revision , 1 , 6));
+
+            MatchSnapshot revisionFive = CreateSnapshot(matchId , 5 , playerOneUserId , playerTwoUserId);
+            bool isApplied = model.ApplySnapshot(revisionFive);
+
+            Assert.That(isApplied , Is.True);
+            Assert.That(model.HasOpponentPreview , Is.False);
+        }
+
+        [Test]
         public void GetStartCountdownNumber_WithStartingSnapshot_ReturnsCeilingSeconds()
         {
             GameBoard_Model model = new GameBoard_Model();
@@ -158,6 +241,23 @@ namespace DotsAndBoxes.Gameplay.Tests
             {
                 snapshot.PlayerTwoScore++;
             }
+        }
+
+        private static OpponentPreviewUpdate CreateOpponentPreviewUpdate(
+            Guid matchId ,
+            long revision ,
+            long previewSequence ,
+            int edgeId)
+        {
+            return new OpponentPreviewUpdate
+            {
+                MatchId = matchId ,
+                PlayerIndex = PLAYER_INDEX_ENUM.PLAYER_ONE ,
+                HasPreview = true ,
+                EdgeId = edgeId ,
+                Revision = revision ,
+                PreviewSequence = previewSequence
+            };
         }
 
         private static PLAYER_INDEX_ENUM[] CreateEmptyOwners(int length)

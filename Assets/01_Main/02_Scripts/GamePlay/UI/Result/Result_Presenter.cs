@@ -11,8 +11,8 @@ namespace DotsAndBoxes.Gameplay
         private bool _isBound;
         private bool _isDisposed;
 
-        public event Action RestartRequested;
         public event Action LobbyRequested;
+        public event Action CancelRequested;
 
         public Result_Presenter(Result_Model model , Result_View view)
         {
@@ -27,6 +27,24 @@ namespace DotsAndBoxes.Gameplay
 
             _view.Open();
             RefreshView();
+        }
+
+        public void OpenMessage(string title , string message)
+        {
+            ThrowIfDisposed();
+            BindEvents();
+
+            _view.Open();
+            _view.ShowMessage(title , message);
+        }
+
+        public void OpenConfirmation(string title , string message)
+        {
+            ThrowIfDisposed();
+            BindEvents();
+
+            _view.Open();
+            _view.ShowConfirmation(title , message);
         }
 
         public override void Close()
@@ -48,8 +66,8 @@ namespace DotsAndBoxes.Gameplay
 
             UnbindEvents();
             
-            RestartRequested = null;
             LobbyRequested = null;
+            CancelRequested = null;
 
             _isDisposed = true;
         }
@@ -61,8 +79,8 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.RestartRequested += OnRestartRequested;
             _view.LobbyRequested += OnLobbyRequested;
+            _view.CancelRequested += OnCancelRequestedActioned;
 
             _isBound = true;
         }
@@ -74,8 +92,8 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.RestartRequested -= OnRestartRequested;
             _view.LobbyRequested -= OnLobbyRequested;
+            _view.CancelRequested -= OnCancelRequestedActioned;
 
             _isBound = false;
         }
@@ -90,16 +108,16 @@ namespace DotsAndBoxes.Gameplay
             _view.ShowResult(_model.GameResult , _model.PlayerOneScore , _model.PlayerTwoScore);
         }
 
-        private void OnRestartRequested()
-        {
-            Close();
-            RestartRequested?.Invoke();
-        }
-
         private void OnLobbyRequested()
         {
             Close();
             LobbyRequested?.Invoke();
+        }
+
+        private void OnCancelRequestedActioned()
+        {
+            Close();
+            CancelRequested?.Invoke();
         }
 
         private void ThrowIfDisposed()

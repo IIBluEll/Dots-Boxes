@@ -136,6 +136,7 @@ namespace DotsAndBoxes.Gameplay
             {
                 _session.SnapshotChanged += OnSnapshotChanged;
                 _session.ConnectionStateChanged += OnConnectionStateChanged;
+                _session.OpponentPreviewChanged += OnOpponentPreviewChanged;
             }
 
             _isBound = true;
@@ -156,6 +157,7 @@ namespace DotsAndBoxes.Gameplay
             {
                 _session.SnapshotChanged -= OnSnapshotChanged;
                 _session.ConnectionStateChanged -= OnConnectionStateChanged;
+                _session.OpponentPreviewChanged -= OnOpponentPreviewChanged;
             }
 
             _isBound = false;
@@ -191,6 +193,13 @@ namespace DotsAndBoxes.Gameplay
             if ( _model.HasPreview )
             {
                 _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
+            }
+
+            if ( _model.HasOpponentPreview )
+            {
+                _view.ShowOpponentPreviewEdge(
+                    _model.OpponentPreviewEdgeId ,
+                    _model.OpponentPreviewPlayerIndex);
             }
 
             if ( !canSelectEdge )
@@ -331,21 +340,26 @@ namespace DotsAndBoxes.Gameplay
             }
 
             int previousPreviewEdgeId = _model.PreviewEdgeId;
-            bool isPreviewChanged = _model.TrySetPreviewEdge(edgeId);
+            bool isSamePreviewSelected = previousPreviewEdgeId == edgeId;
+            bool isPreviewChanged = isSamePreviewSelected
+                ? _model.TryClearPreviewEdge(edgeId)
+                : _model.TrySetPreviewEdge(edgeId);
 
             if ( !isPreviewChanged )
             {
                 return;
             }
 
-            if ( previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID &&
-                previousPreviewEdgeId != edgeId )
-            {
-                _view.ShowAvailableEdge(previousPreviewEdgeId);
-            }
+            RefreshView();
 
-            _view.ShowLocalPreviewEdge(edgeId);
-            _view.SetConfirmInteractable(true);
+            if ( _session != null )
+            {
+                int previewEdgeId = isSamePreviewSelected
+                    ? OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID
+                    : edgeId;
+
+                _ = SetOnlinePreview_async(previewEdgeId);
+            }
         }
 
         private async void OnConfirmRequested()
@@ -362,6 +376,19 @@ namespace DotsAndBoxes.Gameplay
         private void OnSnapshotChanged(MatchSnapshot snapshot)
         {
             ApplySnapshot(snapshot);
+        }
+
+        private void OnOpponentPreviewChanged(OpponentPreviewUpdate update)
+        {
+            if ( _isDisposed || !_model.TryApplyOpponentPreview(update) )
+            {
+                return;
+            }
+
+            if ( _isOpen )
+            {
+                RefreshView();
+            }
         }
 
         private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
@@ -445,6 +472,28 @@ namespace DotsAndBoxes.Gameplay
                 if ( _isOpen && !_isDisposed )
                 {
                     RefreshView();
+                }
+            }
+        }
+
+        private async Task SetOnlinePreview_async(int edgeId)
+        {
+            try
+            {
+                MATCH_COMMAND_ERROR_ENUM error = await _session.SetPreviewEdge_async(edgeId);
+
+                if ( _isDisposed || error != MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH )
+                {
+                    return;
+                }
+
+                await _session.RequestSync_async();
+            }
+            catch ( Exception exception )
+            {
+                if ( !_isDisposed )
+                {
+                    SessionFailed?.Invoke(exception);
                 }
             }
         }

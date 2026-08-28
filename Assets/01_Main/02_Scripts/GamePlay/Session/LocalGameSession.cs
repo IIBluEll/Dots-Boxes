@@ -18,6 +18,11 @@ namespace DotsAndBoxes.Gameplay
 
         public event Action<MatchSnapshot> SnapshotChanged;
         public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
+        public event Action<OpponentPreviewUpdate> OpponentPreviewChanged
+        {
+            add { }
+            remove { }
+        }
 
         public Guid MatchId { get; }
         public PLAYER_INDEX_ENUM LocalPlayerIndex => PLAYER_INDEX_ENUM.NONE;
@@ -96,6 +101,40 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return Task.FromResult(CurrentSnapshot);
+        }
+
+        public Task<MATCH_COMMAND_ERROR_ENUM> SetPreviewEdge_async(
+            int edgeId ,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled<MATCH_COMMAND_ERROR_ENUM>(cancellationToken);
+            }
+
+            if ( !_isStarted )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE);
+            }
+
+            if ( edgeId == OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.NONE);
+            }
+
+            if ( edgeId < 0 || edgeId >= BoardTopology.EDGE_COUNT )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.INVALID_EDGE);
+            }
+
+            if ( BOARD.GetEdge(edgeId).IsConfirmed )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.EDGE_ALREADY_CONFIRMED);
+            }
+
+            return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.NONE);
         }
 
         public Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)

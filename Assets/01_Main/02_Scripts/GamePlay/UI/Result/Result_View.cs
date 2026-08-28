@@ -15,16 +15,16 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private TMP_Text _finalScoreTxt;
 
         [Space(5f), Header("Buttons")]
-        [SerializeField] private Button _restartBtn;
         [SerializeField] private Button _lobbyBtn;
+        [SerializeField] private Button _cancelBtn;
 
         [Space(5f), Header("Colors")]
         [SerializeField] private Color _playerOneResultColor = new Color(0.1f, 0.45f, 1f, 1f);
         [SerializeField] private Color _playerTwoResultColor = new Color(1f, 0.4f, 0.1f, 1f);
         [SerializeField] private Color _drawResultColor = Color.white;
 
-        public event Action RestartRequested;
         public event Action LobbyRequested;
+        public event Action CancelRequested;
 
         private void Awake()
         {
@@ -34,20 +34,20 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _restartBtn.onClick.AddListener(OnRestartButtonClicked);
             _lobbyBtn.onClick.AddListener(OnLobbyButtonClicked);
+            _cancelBtn.onClick.AddListener(OnCancelButtonActioned);
         }
 
         private void OnDestroy()
         {
-            if ( _restartBtn != null )
-            {
-                _restartBtn.onClick.RemoveListener(OnRestartButtonClicked);
-            }
-
             if ( _lobbyBtn != null )
             {
                 _lobbyBtn.onClick.RemoveListener(OnLobbyButtonClicked);
+            }
+
+            if ( _cancelBtn != null )
+            {
+                _cancelBtn.onClick.RemoveListener(OnCancelButtonActioned);
             }
         }
 
@@ -59,6 +59,8 @@ namespace DotsAndBoxes.Gameplay
 
         public void ShowResult(GAME_RESULT_ENUM gameResult , int playerOneScore , int playerTwoScore)
         {
+            _cancelBtn.gameObject.SetActive(false);
+
             switch ( gameResult )
             {
                 case GAME_RESULT_ENUM.PLAYER_ONE_WIN:
@@ -83,21 +85,38 @@ namespace DotsAndBoxes.Gameplay
             _finalScoreTxt.text = $"PLAYER 1  {playerOneScore} : {playerTwoScore}  PLAYER 2";
         }
 
-        private void OnRestartButtonClicked()
+        public void ShowMessage(string title , string message)
         {
-            RestartRequested?.Invoke();
+            _cancelBtn.gameObject.SetActive(false);
+            _resultTxt.text = string.IsNullOrWhiteSpace(title) ? "NOTICE" : title;
+            _resultTxt.color = _drawResultColor;
+            _finalScoreTxt.text = string.IsNullOrWhiteSpace(message) ? "확인 후 Lobby로 이동해 주세요." : message;
+        }
+
+        public void ShowConfirmation(string title , string message)
+        {
+            _cancelBtn.gameObject.SetActive(true);
+            _resultTxt.text = string.IsNullOrWhiteSpace(title) ? "CONFIRM" : title;
+            _resultTxt.color = _drawResultColor;
+            _finalScoreTxt.text = string.IsNullOrWhiteSpace(message) ? "계속 진행하시겠습니까?" : message;
         }
 
         private void OnLobbyButtonClicked()
         {
             LobbyRequested?.Invoke();
         }
+
+        private void OnCancelButtonActioned()
+        {
+            CancelRequested?.Invoke();
+        }
+
         private bool ValidateReferences()
         {
             bool isValid = _resultTxt != null &&
                _finalScoreTxt != null &&
-               _restartBtn != null &&
-               _lobbyBtn != null;
+               _lobbyBtn != null &&
+               _cancelBtn != null;
 
             if ( !isValid )
             {

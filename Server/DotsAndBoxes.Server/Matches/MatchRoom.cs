@@ -7,9 +7,12 @@ namespace DotsAndBoxes.Server.Matches
 {
     public sealed class MatchRoom
     {
+        private const int MAX_PREVIEW_REQUESTS_PER_WINDOW = 5;
+
         private readonly DotsBoard BOARD;
         private readonly SemaphoreSlim COMMAND_LOCK = new SemaphoreSlim(1, 1);
         private readonly Dictionary<Guid, ProcessedConfirmRequest> PROCESSED_CONFIRM_REQUESTS = new Dictionary<Guid, ProcessedConfirmRequest>();
+        private static readonly TimeSpan PREVIEW_RATE_LIMIT_WINDOW = TimeSpan.FromSeconds(1);
         private readonly TimeSpan TURN_DURATION;
         private readonly int MAX_TIMEOUTS_PER_PLAYER;
         private readonly Func<DateTimeOffset> UTC_NOW_PROVIDER;
@@ -21,6 +24,12 @@ namespace DotsAndBoxes.Server.Matches
         private GAME_RESULT_ENUM _gameResult;
         private bool _isPlayerOneJoined;
         private bool _isPlayerTwoJoined;
+        private long _playerOneLastPreviewSequence;
+        private long _playerTwoLastPreviewSequence;
+        private DateTimeOffset _playerOnePreviewWindowStartUtc;
+        private DateTimeOffset _playerTwoPreviewWindowStartUtc;
+        private int _playerOnePreviewRequestCount;
+        private int _playerTwoPreviewRequestCount;
 
         public Guid MatchId { get; }
         public MatchPlayer PlayerOne { get; }
@@ -261,10 +270,109 @@ namespace DotsAndBoxes.Server.Matches
             }
         }
 
+        public async Task<MatchRoomPreviewResult> TrySetPreviewEdge_async(
+            Guid userId ,
+            PreviewEdgeRequest request ,
+            CancellationToken cancellationToken = default)
+        {
+            if ( request == null )
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            await COMMAND_LOCK.WaitAsync(cancellationToken);
+
+            try
+            {
+                return TrySetPreviewEdgeLocked(userId , request);
+            }
+            finally
+            {
+                COMMAND_LOCK.Release();
+            }
+        }
+
+        private MatchRoomPreviewResult TrySetPreviewEdgeLocked(
+            Guid userId ,
+            PreviewEdgeRequest request)
+        {
+            if ( request.MatchId != MatchId )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_FOUND);
+            }
+
+            if ( !TryGetPlayerIndex(userId , out PLAYER_INDEX_ENUM playerIndex) )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.NOT_A_MATCH_PLAYER);
+            }
+
+            if ( MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE);
+            }
+
+            if ( playerIndex != CurrentPlayerIndex )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.NOT_YOUR_TURN);
+            }
+
+            if ( request.ExpectedRevision != Revision )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH);
+            }
+
+            long lastPreviewSequence = GetLastPreviewSequence(playerIndex);
+
+            if ( request.PreviewSequence <= 0 || request.PreviewSequence <= lastPreviewSequence )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.INVALID_REQUEST);
+            }
+
+            bool hasPreview = request.EdgeId != OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID;
+
+            if ( hasPreview && (request.EdgeId < 0 || request.EdgeId >= BoardTopology.EDGE_COUNT) )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.INVALID_EDGE);
+            }
+
+            if ( hasPreview && BOARD.GetEdge(request.EdgeId).IsConfirmed )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.EDGE_ALREADY_CONFIRMED);
+            }
+
+            if ( !TryConsumePreviewRequest(playerIndex) )
+            {
+                return MatchRoomPreviewResult.CreateRejected(
+                    MATCH_COMMAND_ERROR_ENUM.RATE_LIMITED);
+            }
+
+            SetLastPreviewSequence(playerIndex , request.PreviewSequence);
+
+            OpponentPreviewUpdate update = new OpponentPreviewUpdate
+            {
+                MatchId = MatchId ,
+                PlayerIndex = playerIndex ,
+                HasPreview = hasPreview ,
+                EdgeId = request.EdgeId ,
+                Revision = Revision ,
+                PreviewSequence = request.PreviewSequence
+            };
+
+            return MatchRoomPreviewResult.CreateAccepted(update);
+        }
+
         public async Task<ConfirmEdgeResponse> ConfirmEdge_async(
-    Guid userId ,
-    ConfirmEdgeRequest request ,
-    CancellationToken cancellationToken = default)
+            Guid userId ,
+            ConfirmEdgeRequest request ,
+            CancellationToken cancellationToken = default)
         {
             if ( request == null )
             {
@@ -380,6 +488,69 @@ namespace DotsAndBoxes.Server.Matches
             PROCESSED_CONFIRM_REQUESTS.Add(request.RequestId, new ProcessedConfirmRequest(userId , request , response));
 
             return response;
+        }
+
+        private long GetLastPreviewSequence(PLAYER_INDEX_ENUM playerIndex)
+        {
+            return playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                ? _playerOneLastPreviewSequence
+                : _playerTwoLastPreviewSequence;
+        }
+
+        private void SetLastPreviewSequence(
+            PLAYER_INDEX_ENUM playerIndex ,
+            long previewSequence)
+        {
+            if ( playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE )
+            {
+                _playerOneLastPreviewSequence = previewSequence;
+                return;
+            }
+
+            _playerTwoLastPreviewSequence = previewSequence;
+        }
+
+        private bool TryConsumePreviewRequest(PLAYER_INDEX_ENUM playerIndex)
+        {
+            DateTimeOffset utcNow = UTC_NOW_PROVIDER();
+
+            if ( playerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE )
+            {
+                return TryConsumePreviewRequest(
+                    ref _playerOnePreviewWindowStartUtc ,
+                    ref _playerOnePreviewRequestCount ,
+                    utcNow);
+            }
+
+            return TryConsumePreviewRequest(
+                ref _playerTwoPreviewWindowStartUtc ,
+                ref _playerTwoPreviewRequestCount ,
+                utcNow);
+        }
+
+        private static bool TryConsumePreviewRequest(
+            ref DateTimeOffset windowStartUtc ,
+            ref int requestCount ,
+            DateTimeOffset utcNow)
+        {
+            bool shouldResetWindow =
+                windowStartUtc == default ||
+                utcNow < windowStartUtc ||
+                utcNow - windowStartUtc >= PREVIEW_RATE_LIMIT_WINDOW;
+
+            if ( shouldResetWindow )
+            {
+                windowStartUtc = utcNow;
+                requestCount = 0;
+            }
+
+            if ( requestCount >= MAX_PREVIEW_REQUESTS_PER_WINDOW )
+            {
+                return false;
+            }
+
+            requestCount++;
+            return true;
         }
 
         private MatchSnapshot CreateSnapshotLocked()
