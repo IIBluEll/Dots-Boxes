@@ -12,6 +12,7 @@ namespace DotsAndBoxes.Gameplay
         private bool _isDisposed;
 
         public event Action RestartRequested;
+        public event Action LobbyRequested;
 
         public Result_Presenter(Result_Model model , Result_View view)
         {
@@ -46,7 +47,10 @@ namespace DotsAndBoxes.Gameplay
             }
 
             UnbindEvents();
+            
             RestartRequested = null;
+            LobbyRequested = null;
+
             _isDisposed = true;
         }
 
@@ -58,6 +62,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.RestartRequested += OnRestartRequested;
+            _view.LobbyRequested += OnLobbyRequested;
+
             _isBound = true;
         }
 
@@ -69,6 +75,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _view.RestartRequested -= OnRestartRequested;
+            _view.LobbyRequested -= OnLobbyRequested;
+
             _isBound = false;
         }
 
@@ -86,6 +94,12 @@ namespace DotsAndBoxes.Gameplay
         {
             Close();
             RestartRequested?.Invoke();
+        }
+
+        private void OnLobbyRequested()
+        {
+            Close();
+            LobbyRequested?.Invoke();
         }
 
         private void ThrowIfDisposed()

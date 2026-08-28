@@ -52,6 +52,7 @@ namespace DotsAndBoxes.Gameplay
 
             _destroyCancellationTokenSource = new CancellationTokenSource();
             _resultUI.RestartRequested += OnRestartRequested;
+            _resultUI.LobbyRequested += OnLobbyRequested;
 
             CreateGameBoard();
         }
@@ -100,6 +101,7 @@ namespace DotsAndBoxes.Gameplay
             if ( _resultUI != null )
             {
                 _resultUI.RestartRequested -= OnRestartRequested;
+                _resultUI.LobbyRequested -= OnLobbyRequested;
             }
 
             ReleaseGameBoard();
@@ -260,6 +262,17 @@ namespace DotsAndBoxes.Gameplay
             _ = LeaveGame_async();
         }
 
+        private void OnLobbyRequested()
+        {
+            if ( _isLeaving )
+            {
+                return;
+            }
+
+            _isLeaving = true;
+            ReturnToLobby();
+        }
+
         private async Task LeaveGame_async()
         {
             _isLeaving = true;
@@ -288,6 +301,11 @@ namespace DotsAndBoxes.Gameplay
                 }
             }
 
+            ReturnToLobby();
+        }
+
+        private void ReturnToLobby()
+        {
             if ( this == null )
             {
                 return;
@@ -295,9 +313,7 @@ namespace DotsAndBoxes.Gameplay
 
             OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
 
-            if ( _gameSession != null &&
-                 sessionProvider != null &&
-                 ReferenceEquals(sessionProvider.GameSession , _gameSession) )
+            if ( _gameSession != null && sessionProvider != null && ReferenceEquals(sessionProvider.GameSession , _gameSession) )
             {
                 sessionProvider.ResetGameSession();
             }

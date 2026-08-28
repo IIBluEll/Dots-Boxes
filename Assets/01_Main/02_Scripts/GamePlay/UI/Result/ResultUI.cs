@@ -13,6 +13,7 @@ namespace DotsAndBoxes.Gameplay
         private Result_Presenter _resultPresenter;
 
         public event Action RestartRequested;
+        public event Action LobbyRequested;
 
         private void Awake()
         {
@@ -25,7 +26,10 @@ namespace DotsAndBoxes.Gameplay
 
             _resultModel = new Result_Model();
             _resultPresenter = new Result_Presenter(_resultModel , _resultView);
+
             _resultPresenter.RestartRequested += OnRestartRequested;
+            _resultPresenter.LobbyRequested += OnLobbyRequested;
+
             _resultPresenter.Close();
         }
 
@@ -37,6 +41,8 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _resultPresenter.RestartRequested -= OnRestartRequested;
+            _resultPresenter.LobbyRequested -= OnLobbyRequested;
+
             _resultPresenter.Dispose();
         }
 
@@ -54,6 +60,11 @@ namespace DotsAndBoxes.Gameplay
         private void OnRestartRequested()
         {
             RestartRequested?.Invoke();
+        }
+
+        private void OnLobbyRequested()
+        {
+            LobbyRequested?.Invoke();
         }
     }
 }

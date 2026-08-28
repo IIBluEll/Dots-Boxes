@@ -16,6 +16,7 @@ namespace DotsAndBoxes.Gameplay
 
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _restartBtn;
+        [SerializeField] private Button _lobbyBtn;
 
         [Space(5f), Header("Colors")]
         [SerializeField] private Color _playerOneResultColor = new Color(0.1f, 0.45f, 1f, 1f);
@@ -23,6 +24,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _drawResultColor = Color.white;
 
         public event Action RestartRequested;
+        public event Action LobbyRequested;
 
         private void Awake()
         {
@@ -33,6 +35,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _restartBtn.onClick.AddListener(OnRestartButtonClicked);
+            _lobbyBtn.onClick.AddListener(OnLobbyButtonClicked);
         }
 
         private void OnDestroy()
@@ -40,6 +43,11 @@ namespace DotsAndBoxes.Gameplay
             if ( _restartBtn != null )
             {
                 _restartBtn.onClick.RemoveListener(OnRestartButtonClicked);
+            }
+
+            if ( _lobbyBtn != null )
+            {
+                _lobbyBtn.onClick.RemoveListener(OnLobbyButtonClicked);
             }
         }
 
@@ -80,11 +88,16 @@ namespace DotsAndBoxes.Gameplay
             RestartRequested?.Invoke();
         }
 
+        private void OnLobbyButtonClicked()
+        {
+            LobbyRequested?.Invoke();
+        }
         private bool ValidateReferences()
         {
             bool isValid = _resultTxt != null &&
-                           _finalScoreTxt != null &&
-                           _restartBtn != null;
+               _finalScoreTxt != null &&
+               _restartBtn != null &&
+               _lobbyBtn != null;
 
             if ( !isValid )
             {
