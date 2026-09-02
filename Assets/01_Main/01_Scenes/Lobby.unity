@@ -2552,7 +2552,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.MainLobbyUI
   _view: {fileID: 1668635423}
-  _serverUrl: http://localhost:5049
+  _serverUrl: https://game.hmlee4135.cloud
 --- !u!1001 &1862512364
 PrefabInstance:
   m_ObjectHideFlags: 0

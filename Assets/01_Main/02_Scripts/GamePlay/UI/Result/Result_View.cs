@@ -3,6 +3,7 @@ using HM.CodeBase;
 using System;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 namespace DotsAndBoxes.Gameplay
@@ -14,17 +15,23 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private TMP_Text _resultTxt;
         [SerializeField] private TMP_Text _finalScoreTxt;
 
+        [Space(5f), Header("Result Image")]
+        [SerializeField] private Image _resultImg;
+        [SerializeField] private Sprite _winSprite;
+        [SerializeField] private Sprite _loseSprite;
+        [SerializeField] private Sprite _drawSprite;
+
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _lobbyBtn;
-        [SerializeField] private Button _cancelBtn;
 
         [Space(5f), Header("Colors")]
-        [SerializeField] private Color _playerOneResultColor = new Color(0.1f, 0.45f, 1f, 1f);
-        [SerializeField] private Color _playerTwoResultColor = new Color(1f, 0.4f, 0.1f, 1f);
+        [FormerlySerializedAs("_playerOneResultColor")]
+        [SerializeField] private Color _winResultColor = new Color(1f, 0.72f, 0.12f, 1f);
+        [FormerlySerializedAs("_playerTwoResultColor")]
+        [SerializeField] private Color _loseResultColor = new Color(1f, 0.3f, 0.25f, 1f);
         [SerializeField] private Color _drawResultColor = Color.white;
 
         public event Action LobbyRequested;
-        public event Action CancelRequested;
 
         private void Awake()
         {
@@ -35,7 +42,6 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _lobbyBtn.onClick.AddListener(OnLobbyButtonClicked);
-            _cancelBtn.onClick.AddListener(OnCancelButtonActioned);
         }
 
         private void OnDestroy()
@@ -44,61 +50,53 @@ namespace DotsAndBoxes.Gameplay
             {
                 _lobbyBtn.onClick.RemoveListener(OnLobbyButtonClicked);
             }
-
-            if ( _cancelBtn != null )
-            {
-                _cancelBtn.onClick.RemoveListener(OnCancelButtonActioned);
-            }
         }
 
         public override void Clear()
         {
             _resultTxt.text = string.Empty;
             _finalScoreTxt.text = string.Empty;
+            ShowResultImage(null);
         }
 
-        public void ShowResult(GAME_RESULT_ENUM gameResult , int playerOneScore , int playerTwoScore)
+        public void ShowResult(
+            LOCAL_GAME_RESULT_ENUM localGameResult ,
+            int localPlayerScore ,
+            int opponentScore)
         {
-            _cancelBtn.gameObject.SetActive(false);
-
-            switch ( gameResult )
+            switch ( localGameResult )
             {
-                case GAME_RESULT_ENUM.PLAYER_ONE_WIN:
-                    _resultTxt.text = "PLAYER 1 WIN";
-                    _resultTxt.color = _playerOneResultColor;
+                case LOCAL_GAME_RESULT_ENUM.WIN:
+                    _resultTxt.text = "승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
                     break;
 
-                case GAME_RESULT_ENUM.PLAYER_TWO_WIN:
-                    _resultTxt.text = "PLAYER 2 WIN";
-                    _resultTxt.color = _playerTwoResultColor;
+                case LOCAL_GAME_RESULT_ENUM.LOSE:
+                    _resultTxt.text = "패배";
+                    _resultTxt.color = _loseResultColor;
+                    ShowResultImage(_loseSprite);
                     break;
 
-                case GAME_RESULT_ENUM.DRAW:
-                    _resultTxt.text = "DRAW";
+                case LOCAL_GAME_RESULT_ENUM.DRAW:
+                    _resultTxt.text = "무승부";
                     _resultTxt.color = _drawResultColor;
+                    ShowResultImage(_drawSprite);
                     break;
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(gameResult) , gameResult , "표시할 수 없는 게임 결과입니다.");
+                    throw new ArgumentOutOfRangeException(nameof(localGameResult) , localGameResult , "표시할 수 없는 게임 결과입니다.");
             }
 
-            _finalScoreTxt.text = $"PLAYER 1  {playerOneScore} : {playerTwoScore}  PLAYER 2";
+            _finalScoreTxt.text = $"{localPlayerScore} : {opponentScore}";
         }
 
         public void ShowMessage(string title , string message)
         {
-            _cancelBtn.gameObject.SetActive(false);
+            ShowResultImage(null);
             _resultTxt.text = string.IsNullOrWhiteSpace(title) ? "NOTICE" : title;
             _resultTxt.color = _drawResultColor;
             _finalScoreTxt.text = string.IsNullOrWhiteSpace(message) ? "확인 후 Lobby로 이동해 주세요." : message;
-        }
-
-        public void ShowConfirmation(string title , string message)
-        {
-            _cancelBtn.gameObject.SetActive(true);
-            _resultTxt.text = string.IsNullOrWhiteSpace(title) ? "CONFIRM" : title;
-            _resultTxt.color = _drawResultColor;
-            _finalScoreTxt.text = string.IsNullOrWhiteSpace(message) ? "계속 진행하시겠습니까?" : message;
         }
 
         private void OnLobbyButtonClicked()
@@ -106,17 +104,22 @@ namespace DotsAndBoxes.Gameplay
             LobbyRequested?.Invoke();
         }
 
-        private void OnCancelButtonActioned()
+        private void ShowResultImage(Sprite resultSprite)
         {
-            CancelRequested?.Invoke();
+            if ( _resultImg == null )
+            {
+                return;
+            }
+
+            _resultImg.sprite = resultSprite;
+            _resultImg.gameObject.SetActive(resultSprite != null);
         }
 
         private bool ValidateReferences()
         {
             bool isValid = _resultTxt != null &&
                _finalScoreTxt != null &&
-               _lobbyBtn != null &&
-               _cancelBtn != null;
+               _lobbyBtn != null;
 
             if ( !isValid )
             {

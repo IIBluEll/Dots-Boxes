@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.UI;
 
@@ -34,7 +35,6 @@ namespace DotsAndBoxes.Gameplay
 
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _confirmBtn;
-        [SerializeField] private Button _leaveBtn;
 
         [Space(5f), Header("Player Colors")]
         [SerializeField] private Color _playerOneEdgeColor = new Color(0.1f, 0.45f, 1f, 1f);
@@ -43,11 +43,14 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _playerTwoBoxColor = new Color(1f, 0.4f, 0.1f, 0.35f);
 
         [Space(5f), Header("Status")]
-        [SerializeField] private TMP_Text _playerOneScoreTxt;
-        [SerializeField] private TMP_Text _playerTwoScoreTxt;
+        [FormerlySerializedAs("_playerOneScoreTxt")]
+        [SerializeField] private TMP_Text _localPlayerScoreTxt;
+        [FormerlySerializedAs("_playerTwoScoreTxt")]
+        [SerializeField] private TMP_Text _opponentScoreTxt;
         [SerializeField] private TMP_Text _turnTxt;
         [SerializeField] private TMP_Text _turnTimerTxt;
         [SerializeField] private TMP_Text _connectionStateTxt;
+        [SerializeField] private TMP_Text _actionGuideTxt;
 
         private BoardEdgeButton[] _edgeButtons;
         private BoardBoxVisual[] _boxVisuals;
@@ -56,7 +59,6 @@ namespace DotsAndBoxes.Gameplay
 
         public event Action<int> EdgeSelected;
         public event Action ConfirmRequested;
-        public event Action LeaveRequested;
         private void Awake()
         {
             if (!ValidateReferences())
@@ -68,7 +70,6 @@ namespace DotsAndBoxes.Gameplay
             BuildBoard();
 
             _confirmBtn.onClick.AddListener(OnConfirmButtonClicked);
-            _leaveBtn.onClick.AddListener(OnLeaveButtonClicked);
 
             SetConfirmInteractable(false);
         }
@@ -83,11 +84,6 @@ namespace DotsAndBoxes.Gameplay
             if ( _confirmBtn != null )
             {
                 _confirmBtn.onClick.RemoveListener(OnConfirmButtonClicked);
-            }
-
-            if ( _leaveBtn != null )
-            {
-                _leaveBtn.onClick.RemoveListener(OnLeaveButtonClicked);
             }
 
             for (int i = 0; i < _edgeButtons.Length; i++)
@@ -126,10 +122,10 @@ namespace DotsAndBoxes.Gameplay
             return _edgeButtons[edgeId];
         }
 
-        public void ShowScores(int playerOneScore , int playerTwoScore)
+        public void ShowScores(int localPlayerScore , int opponentScore)
         {
-            _playerOneScoreTxt.text = $"PLAYER 1 : {playerOneScore}";
-            _playerTwoScoreTxt.text = $"PLAYER 2 : {playerTwoScore}";
+            _localPlayerScoreTxt.text = $"{localPlayerScore}";
+            _opponentScoreTxt.text = $"{opponentScore}";
         }
 
         public void ShowMatchStatus(string status)
@@ -138,12 +134,31 @@ namespace DotsAndBoxes.Gameplay
             _turnTxt.color = Color.white;
         }
 
-        public void ShowCurrentTurn(PLAYER_INDEX_ENUM currentPlayerIndex)
+        public void ShowCurrentTurn(
+            PLAYER_INDEX_ENUM currentPlayerIndex ,
+            PLAYER_INDEX_ENUM localPlayerIndex)
         {
+            bool isLocalPlayerTurn = currentPlayerIndex == localPlayerIndex;
             bool isPlayerOneTurn = currentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE;
 
-            _turnTxt.text = isPlayerOneTurn ? "PLAYER 1 TURN" : "PLAYER 2 TURN";
+            _turnTxt.text = isLocalPlayerTurn ? "플레이어 턴" : "상대방 턴";
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
+        }
+
+        public void ShowActionGuide(bool isExtraTurn)
+        {
+            _actionGuideTxt.gameObject.SetActive(true);
+            _actionGuideTxt.text = isExtraTurn ? "추가 턴입니다!" : "선을 선택하고 확인을 눌러주세요";
+        }
+
+        public void SetActionGuideVisible(bool isVisible)
+        {
+            if ( _actionGuideTxt.gameObject.activeSelf == isVisible )
+            {
+                return;
+            }
+
+            _actionGuideTxt.gameObject.SetActive(isVisible);
         }
 
         public void SetTurnTimerVisible(bool isVisible)
@@ -158,7 +173,7 @@ namespace DotsAndBoxes.Gameplay
 
         public void ShowTurnTimer(int turnCountdownNumber)
         {
-            _turnTimerTxt.text = $"TIME : {turnCountdownNumber}";
+            _turnTimerTxt.text = $"{turnCountdownNumber}";
         }
 
         public void SetConnectionStateVisible(bool isVisible)
@@ -410,11 +425,6 @@ namespace DotsAndBoxes.Gameplay
             ConfirmRequested?.Invoke();
         }
 
-        private void OnLeaveButtonClicked()
-        {
-            LeaveRequested?.Invoke();
-        }
-
         private void OnEdgeSelected(int edgeId)
         {
             EdgeSelected?.Invoke(edgeId);
@@ -427,12 +437,12 @@ namespace DotsAndBoxes.Gameplay
                _boxPrefabImg != null &&
                _edgePrefabBtn != null &&
                _confirmBtn != null &&
-               _playerOneScoreTxt != null &&
-               _playerTwoScoreTxt != null &&
+               _localPlayerScoreTxt != null &&
+               _opponentScoreTxt != null &&
                _turnTxt != null &&
                _turnTimerTxt != null &&
-               _leaveBtn != null &&
-               _connectionStateTxt != null;
+               _connectionStateTxt != null &&
+               _actionGuideTxt != null;
 
             if (!isValid)
             {

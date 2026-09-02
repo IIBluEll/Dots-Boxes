@@ -15,10 +15,10 @@ namespace DotsAndBoxes.Gameplay
         private bool _isDisposed;
         private bool _isOpen;
         private bool _isConfirming;
+        private bool _isLocalExtraTurn;
 
         public event Action<GAME_RESULT_ENUM, int, int> GameFinished;
         public event Action<Exception> SessionFailed;
-        public event Action LeaveRequested;
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
             : this(model , view , null)
@@ -46,6 +46,7 @@ namespace DotsAndBoxes.Gameplay
                 _model.ApplySnapshot(_session.CurrentSnapshot);
             }
 
+            _isLocalExtraTurn = false;
             RefreshView();
         }
 
@@ -71,9 +72,9 @@ namespace DotsAndBoxes.Gameplay
 
             GameFinished = null;
             SessionFailed = null;
-            LeaveRequested = null;
 
             _isConfirming = false;
+            _isLocalExtraTurn = false;
             _isOpen = false;
             _isDisposed = true;
         }
@@ -82,12 +83,24 @@ namespace DotsAndBoxes.Gameplay
         {
             ThrowIfDisposed();
 
+            bool hadPreviousSnapshot = _model.HasServerSnapshot;
+            long previousRevision = _model.Revision;
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+            PLAYER_INDEX_ENUM previousPlayerIndex = _model.CurrentPlayerIndex;
+            int previousLocalScore = GetPlayerScore(localPlayerIndex);
             bool isApplied = _model.ApplySnapshot(snapshot);
 
             if ( !isApplied )
             {
                 return false;
             }
+
+            _isLocalExtraTurn = IsLocalExtraTurn(
+                hadPreviousSnapshot ,
+                previousRevision ,
+                previousPlayerIndex ,
+                previousLocalScore ,
+                localPlayerIndex);
 
             if ( !_isOpen )
             {
@@ -130,7 +143,6 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected += OnEdgeSelected;
             _view.ConfirmRequested += OnConfirmRequested;
-            _view.LeaveRequested += OnLeaveRequested;
 
             if ( _session != null )
             {
@@ -151,7 +163,6 @@ namespace DotsAndBoxes.Gameplay
 
             _view.EdgeSelected -= OnEdgeSelected;
             _view.ConfirmRequested -= OnConfirmRequested;
-            _view.LeaveRequested -= OnLeaveRequested;
 
             if ( _session != null )
             {
@@ -213,13 +224,17 @@ namespace DotsAndBoxes.Gameplay
 
         private void RefreshStatus()
         {
-            _view.ShowScores(_model.PlayerOneScore , _model.PlayerTwoScore);
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+            PLAYER_INDEX_ENUM opponentPlayerIndex = localPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? PLAYER_INDEX_ENUM.PLAYER_TWO : PLAYER_INDEX_ENUM.PLAYER_ONE;
+
+            _view.ShowScores(GetPlayerScore(localPlayerIndex) , GetPlayerScore(opponentPlayerIndex));
             RefreshMatchState(DateTimeOffset.UtcNow);
         }
 
         private void RefreshMatchState(DateTimeOffset utcNow)
         {
             _view.SetTurnTimerVisible(false);
+            _view.SetActionGuideVisible(false);
 
             switch ( _model.MatchState )
             {
@@ -272,7 +287,15 @@ namespace DotsAndBoxes.Gameplay
 
         private void RefreshActiveStatus(DateTimeOffset utcNow)
         {
-            _view.ShowCurrentTurn(_model.CurrentPlayerIndex);
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+            bool isLocalPlayerTurn = _model.CurrentPlayerIndex == localPlayerIndex;
+
+            _view.ShowCurrentTurn(_model.CurrentPlayerIndex , localPlayerIndex);
+
+            if ( isLocalPlayerTurn )
+            {
+                _view.ShowActionGuide(_isLocalExtraTurn);
+            }
 
             if ( !_model.TurnDeadLineUtc.HasValue )
             {
@@ -402,16 +425,6 @@ namespace DotsAndBoxes.Gameplay
             RefreshView();
         }
 
-        private void OnLeaveRequested()
-        {
-            if ( _isDisposed || !_isOpen )
-            {
-                return;
-            }
-
-            LeaveRequested?.Invoke();
-        }
-
         private void ConfirmLocalPreview()
         {
             PLAYER_INDEX_ENUM confirmingPlayerIndex = _model.CurrentPlayerIndex;
@@ -420,6 +433,10 @@ namespace DotsAndBoxes.Gameplay
             {
                 return;
             }
+
+            _isLocalExtraTurn = confirmingPlayerIndex == GetLocalPlayerIndex() &&
+                moveResult.CompletedBoxIds.Count > 0 &&
+                !moveResult.IsGameFinished;
 
             _view.ShowConfirmedEdge(moveResult.EdgeId , confirmingPlayerIndex);
 
@@ -439,6 +456,38 @@ namespace DotsAndBoxes.Gameplay
 
             _view.SetBoardInteractable(false);
             NotifyGameFinished();
+        }
+
+        private PLAYER_INDEX_ENUM GetLocalPlayerIndex()
+        {
+            if ( _session != null && _session.LocalPlayerIndex != PLAYER_INDEX_ENUM.NONE )
+            {
+                return _session.LocalPlayerIndex;
+            }
+
+            return PLAYER_INDEX_ENUM.PLAYER_ONE;
+        }
+
+        private int GetPlayerScore(PLAYER_INDEX_ENUM playerIndex)
+        {
+            return playerIndex == PLAYER_INDEX_ENUM.PLAYER_TWO
+                ? _model.PlayerTwoScore
+                : _model.PlayerOneScore;
+        }
+
+        private bool IsLocalExtraTurn(
+            bool hadPreviousSnapshot ,
+            long previousRevision ,
+            PLAYER_INDEX_ENUM previousPlayerIndex ,
+            int previousLocalScore ,
+            PLAYER_INDEX_ENUM localPlayerIndex)
+        {
+            return hadPreviousSnapshot &&
+                _model.Revision == previousRevision + 1 &&
+                previousPlayerIndex == localPlayerIndex &&
+                _model.CurrentPlayerIndex == localPlayerIndex &&
+                GetPlayerScore(localPlayerIndex) > previousLocalScore &&
+                _model.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE;
         }
 
         private async Task ConfirmOnlinePreview_async()

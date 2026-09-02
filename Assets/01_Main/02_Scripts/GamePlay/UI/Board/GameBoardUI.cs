@@ -17,6 +17,7 @@ namespace DotsAndBoxes.Gameplay
         [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
         [SerializeField] private ResultUI _resultUI;
+        [SerializeField] private PauseUI _pauseUI;
 
         [Header("Game Mode")]
         [SerializeField] private bool _useOnlineSession;
@@ -54,7 +55,7 @@ namespace DotsAndBoxes.Gameplay
 
             _destroyCancellationTokenSource = new CancellationTokenSource();
             _resultUI.LobbyRequested += OnLobbyRequested;
-            _resultUI.LeaveConfirmed += OnLeaveConfirmedActioned;
+            _pauseUI.ExitRequested += OnExitRequestedActioned;
 
             CreateGameBoard();
         }
@@ -103,7 +104,11 @@ namespace DotsAndBoxes.Gameplay
             if ( _resultUI != null )
             {
                 _resultUI.LobbyRequested -= OnLobbyRequested;
-                _resultUI.LeaveConfirmed -= OnLeaveConfirmedActioned;
+            }
+
+            if ( _pauseUI != null )
+            {
+                _pauseUI.ExitRequested -= OnExitRequestedActioned;
             }
 
             ReleaseGameBoard();
@@ -126,6 +131,7 @@ namespace DotsAndBoxes.Gameplay
         {
             _gameBoardPresenter?.Close();
             _resultUI?.Close();
+            _pauseUI?.Close();
         }
 
         private void CreateGameBoard()
@@ -158,7 +164,6 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _gameBoardPresenter.GameFinished += OnGameFinished;
-            _gameBoardPresenter.LeaveRequested += OnLeaveRequested;
         }
 
         private void ReleaseGameBoard()
@@ -166,7 +171,6 @@ namespace DotsAndBoxes.Gameplay
             if ( _gameBoardPresenter != null )
             {
                 _gameBoardPresenter.GameFinished -= OnGameFinished;
-                _gameBoardPresenter.LeaveRequested -= OnLeaveRequested;
                 _gameBoardPresenter.SessionFailed -= OnSessionFailed;
                 _gameBoardPresenter.Dispose();
                 _gameBoardPresenter = null;
@@ -232,6 +236,7 @@ namespace DotsAndBoxes.Gameplay
         {
             _resultUI.ShowResult(
                 _gameBoardModel.GameResult ,
+                GetLocalPlayerIndex() ,
                 _gameBoardModel.PlayerOneScore ,
                 _gameBoardModel.PlayerTwoScore);
         }
@@ -241,7 +246,21 @@ namespace DotsAndBoxes.Gameplay
             int playerOneScore ,
             int playerTwoScore)
         {
-            _resultUI.ShowResult(gameResult , playerOneScore , playerTwoScore);
+            _resultUI.ShowResult(
+                gameResult ,
+                GetLocalPlayerIndex() ,
+                playerOneScore ,
+                playerTwoScore);
+        }
+
+        private PLAYER_INDEX_ENUM GetLocalPlayerIndex()
+        {
+            if ( _gameSession != null && _gameSession.LocalPlayerIndex != PLAYER_INDEX_ENUM.NONE )
+            {
+                return _gameSession.LocalPlayerIndex;
+            }
+
+            return PLAYER_INDEX_ENUM.PLAYER_ONE;
         }
 
         private void OnSessionFailed(Exception exception)
@@ -276,17 +295,7 @@ namespace DotsAndBoxes.Gameplay
             _resultUI.ShowMessage(CONNECTION_LOST_TITLE , CONNECTION_LOST_MESSAGE);
         }
 
-        private void OnLeaveRequested()
-        {
-            if ( _isLeaving )
-            {
-                return;
-            }
-
-            _resultUI.ShowLeaveConfirmation();
-        }
-
-        private void OnLeaveConfirmedActioned()
+        private void OnExitRequestedActioned()
         {
             if ( _isLeaving )
             {
@@ -313,6 +322,7 @@ namespace DotsAndBoxes.Gameplay
 
             _gameBoardPresenter?.Close();
             _resultUI?.Close();
+            _pauseUI?.Close();
 
             CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
 
@@ -357,7 +367,7 @@ namespace DotsAndBoxes.Gameplay
 
         private bool ValidateReferences()
         {
-            if ( _gameBoardView == null || _resultUI == null )
+            if ( _gameBoardView == null || _resultUI == null || _pauseUI == null )
             {
                 Debug.LogError("GameBoardUI의 UI 참조가 설정되지 않았습니다." , this);
                 return false;

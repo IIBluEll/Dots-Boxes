@@ -12,7 +12,7 @@ namespace DotsAndBoxes.UI
     [DisallowMultipleComponent]
     public sealed class LoadingSceneUI : MonoBehaviour
     {
-        private const string IN_GAME_SCENE_NAME = "InGame_Test";
+        private const string IN_GAME_SCENE_NAME = "InGame";
         private const string LOBBY_SCENE_NAME = "Lobby";
         private const double RETURN_DELAY_SECONDS = 1.2d;
 
