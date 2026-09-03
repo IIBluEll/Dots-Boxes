@@ -130,8 +130,16 @@ namespace DotsAndBoxes.Gameplay
         public void Close()
         {
             _gameBoardPresenter?.Close();
-            _resultUI?.Close();
-            _pauseUI?.Close();
+
+            if ( _resultUI != null )
+            {
+                _resultUI.Close();
+            }
+
+            if ( _pauseUI != null )
+            {
+                _pauseUI.Close();
+            }
         }
 
         private void CreateGameBoard()
@@ -320,10 +328,6 @@ namespace DotsAndBoxes.Gameplay
         {
             _isLeaving = true;
 
-            _gameBoardPresenter?.Close();
-            _resultUI?.Close();
-            _pauseUI?.Close();
-
             CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
 
             try
@@ -335,7 +339,7 @@ namespace DotsAndBoxes.Gameplay
             }
             catch ( OperationCanceledException )
             {
-                return;
+                // Scene 종료로 취소된 경우에도 아래 finally에서 안전하게 정리합니다.
             }
             catch ( Exception exception )
             {
@@ -344,8 +348,14 @@ namespace DotsAndBoxes.Gameplay
                     Debug.LogException(exception , this);
                 }
             }
-
-            ReturnToLobby();
+            finally
+            {
+                if ( this != null )
+                {
+                    Close();
+                    ReturnToLobby();
+                }
+            }
         }
 
         private void ReturnToLobby()

@@ -100,7 +100,6 @@ namespace DotsAndBoxes.Gameplay
 
         private void OnLobbyRequested()
         {
-            Close();
             LobbyRequested?.Invoke();
         }
 

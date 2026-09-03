@@ -58,7 +58,11 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isOpen = false;
-            _view.Close();
+
+            if ( _view != null )
+            {
+                _view.Close();
+            }
         }
 
         public override void Dispose()
@@ -161,8 +165,11 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.EdgeSelected -= OnEdgeSelected;
-            _view.ConfirmRequested -= OnConfirmRequested;
+            if ( _view != null )
+            {
+                _view.EdgeSelected -= OnEdgeSelected;
+                _view.ConfirmRequested -= OnConfirmRequested;
+            }
 
             if ( _session != null )
             {
@@ -234,7 +241,6 @@ namespace DotsAndBoxes.Gameplay
         private void RefreshMatchState(DateTimeOffset utcNow)
         {
             _view.SetTurnTimerVisible(false);
-            _view.SetActionGuideVisible(false);
 
             switch ( _model.MatchState )
             {
@@ -291,11 +297,6 @@ namespace DotsAndBoxes.Gameplay
             bool isLocalPlayerTurn = _model.CurrentPlayerIndex == localPlayerIndex;
 
             _view.ShowCurrentTurn(_model.CurrentPlayerIndex , localPlayerIndex);
-
-            if ( isLocalPlayerTurn )
-            {
-                _view.ShowActionGuide(_isLocalExtraTurn);
-            }
 
             if ( !_model.TurnDeadLineUtc.HasValue )
             {

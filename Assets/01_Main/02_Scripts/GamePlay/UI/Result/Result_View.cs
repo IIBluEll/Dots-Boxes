@@ -11,7 +11,10 @@ namespace DotsAndBoxes.Gameplay
     [DisallowMultipleComponent]
     public sealed class Result_View : AView
     {
-        [Header("Texts")]
+        [Header("Root")]
+        [SerializeField] private GameObject _resultPopupObj;
+
+        [Space(5f), Header("Texts")]
         [SerializeField] private TMP_Text _resultTxt;
         [SerializeField] private TMP_Text _finalScoreTxt;
 
@@ -32,6 +35,16 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _drawResultColor = Color.white;
 
         public event Action LobbyRequested;
+
+        public override void Open()
+        {
+            _resultPopupObj.SetActive(true);
+        }
+
+        public override void Close()
+        {
+            _resultPopupObj.SetActive(false);
+        }
 
         private void Awake()
         {
@@ -117,7 +130,8 @@ namespace DotsAndBoxes.Gameplay
 
         private bool ValidateReferences()
         {
-            bool isValid = _resultTxt != null &&
+            bool isValid = _resultPopupObj != null &&
+               _resultTxt != null &&
                _finalScoreTxt != null &&
                _lobbyBtn != null;
 

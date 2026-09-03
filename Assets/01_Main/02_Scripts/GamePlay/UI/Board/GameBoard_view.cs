@@ -50,7 +50,6 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private TMP_Text _turnTxt;
         [SerializeField] private TMP_Text _turnTimerTxt;
         [SerializeField] private TMP_Text _connectionStateTxt;
-        [SerializeField] private TMP_Text _actionGuideTxt;
 
         private BoardEdgeButton[] _edgeButtons;
         private BoardBoxVisual[] _boxVisuals;
@@ -143,22 +142,6 @@ namespace DotsAndBoxes.Gameplay
 
             _turnTxt.text = isLocalPlayerTurn ? "플레이어 턴" : "상대방 턴";
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
-        }
-
-        public void ShowActionGuide(bool isExtraTurn)
-        {
-            _actionGuideTxt.gameObject.SetActive(true);
-            _actionGuideTxt.text = isExtraTurn ? "추가 턴입니다!" : "선을 선택하고 확인을 눌러주세요";
-        }
-
-        public void SetActionGuideVisible(bool isVisible)
-        {
-            if ( _actionGuideTxt.gameObject.activeSelf == isVisible )
-            {
-                return;
-            }
-
-            _actionGuideTxt.gameObject.SetActive(isVisible);
         }
 
         public void SetTurnTimerVisible(bool isVisible)
@@ -441,8 +424,7 @@ namespace DotsAndBoxes.Gameplay
                _opponentScoreTxt != null &&
                _turnTxt != null &&
                _turnTimerTxt != null &&
-               _connectionStateTxt != null &&
-               _actionGuideTxt != null;
+               _connectionStateTxt != null;
 
             if (!isValid)
             {
