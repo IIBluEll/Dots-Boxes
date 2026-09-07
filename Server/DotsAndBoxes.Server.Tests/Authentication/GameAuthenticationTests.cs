@@ -174,10 +174,20 @@ public sealed class GameAuthenticationTests
                 services.PostConfigure<GameJwtOptions>(o => o.SigningKey = CreateJwtOptions().SigningKey);
                 services.RemoveAll<IExternalAccountService>();
                 services.AddSingleton<IExternalAccountService>(Accounts);
+                services.RemoveAll<IPlayerProfileService>();
+                services.AddSingleton<IPlayerProfileService>(new FakePlayerProfiles());
                 services.AddHttpClient<IGooglePlayAuthService, GooglePlayAuthService>()
                     .ConfigurePrimaryHttpMessageHandler(() => Google);
             });
         }
+    }
+
+    private sealed class FakePlayerProfiles : IPlayerProfileService
+    {
+        public Task<MatchDisplayNames> GetMatchDisplayNames_async(
+            Guid playerOneUserId,
+            Guid playerTwoUserId) =>
+            Task.FromResult(new MatchDisplayNames("플레이어 1", "플레이어 2"));
     }
 
     private sealed class FakeAccounts : IExternalAccountService
