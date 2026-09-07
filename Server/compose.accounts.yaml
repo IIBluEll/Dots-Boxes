@@ -2,6 +2,6 @@
 # Applying this override RECREATES the game container. Obtain deployment approval first.
 services:
   dotsandboxes-server:
-    image: dotsandboxes-server:accounts-20260907
+    image: dotsandboxes-server:auth-20260907
     env_file:
       - C:/Users/HM_MiniPC/server/.secrets/dotsandboxes/runtime.env
