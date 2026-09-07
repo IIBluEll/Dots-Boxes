@@ -53,6 +53,15 @@ namespace DotsAndBoxes.Gameplay
             _resultPresenter.Open();
         }
 
+        public void ShowSharedLocalResult(
+            GAME_RESULT_ENUM gameResult ,
+            int playerOneScore ,
+            int playerTwoScore)
+        {
+            _resultModel.SetSharedLocalResult(gameResult , playerOneScore , playerTwoScore);
+            _resultPresenter.Open();
+        }
+
         public void ShowMessage(string title , string message)
         {
             _resultPresenter.OpenMessage(title , message);

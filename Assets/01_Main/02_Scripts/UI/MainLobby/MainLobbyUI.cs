@@ -65,6 +65,7 @@ namespace DotsAndBoxes.UI
             if(_presenter != null)
             {
                 _presenter.MatchFound -= OnMatchFoundActioned;
+                _presenter.LocalMatchRequested -= OnLocalMatchActioned;
                 _presenter.MatchMakingFailed -= OnMatchMakingFailedActioned;
                 _presenter.Dispose();
                 _presenter = null;
@@ -81,6 +82,7 @@ namespace DotsAndBoxes.UI
             _presenter = new MainLobby_presenter(_model , _view , session , _cancellationTokenSource.Token);
 
             _presenter.MatchFound += OnMatchFoundActioned;
+            _presenter.LocalMatchRequested += OnLocalMatchActioned;
             _presenter.MatchMakingFailed += OnMatchMakingFailedActioned;
             _presenter.Open();
         }
@@ -98,6 +100,27 @@ namespace DotsAndBoxes.UI
             try
             {
                 sessionProvider.PrepareGameSession(assignment);
+                SceneManager.LoadScene(LOADING_SCENE_NAME);
+            }
+            catch ( Exception exception )
+            {
+                Debug.LogException(exception , this);
+            }
+        }
+
+        private void OnLocalMatchActioned()
+        {
+            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+
+            if ( sessionProvider == null )
+            {
+                Debug.LogError("OnlineSessionProvider를 찾을 수 없습니다." , this);
+                return;
+            }
+
+            try
+            {
+                sessionProvider.PrepareLocalGameSession();
                 SceneManager.LoadScene(LOADING_SCENE_NAME);
             }
             catch ( Exception exception )

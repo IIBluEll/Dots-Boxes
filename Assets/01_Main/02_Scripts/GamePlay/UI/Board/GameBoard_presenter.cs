@@ -294,9 +294,11 @@ namespace DotsAndBoxes.Gameplay
         private void RefreshActiveStatus(DateTimeOffset utcNow)
         {
             PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
-            bool isLocalPlayerTurn = _model.CurrentPlayerIndex == localPlayerIndex;
 
-            _view.ShowCurrentTurn(_model.CurrentPlayerIndex , localPlayerIndex);
+            _view.ShowCurrentTurn(
+                _model.CurrentPlayerIndex ,
+                localPlayerIndex ,
+                IsSharedLocalGame());
 
             if ( !_model.TurnDeadLineUtc.HasValue )
             {
@@ -311,7 +313,7 @@ namespace DotsAndBoxes.Gameplay
 
         private void RefreshConnectionState()
         {
-            bool hasOnlineSession = _session != null;
+            bool hasOnlineSession = _session != null && !IsSharedLocalGame();
 
             _view.SetConnectionStateVisible(hasOnlineSession);
 
@@ -467,6 +469,11 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return PLAYER_INDEX_ENUM.PLAYER_ONE;
+        }
+
+        private bool IsSharedLocalGame()
+        {
+            return _session is LocalGameSession;
         }
 
         private int GetPlayerScore(PLAYER_INDEX_ENUM playerIndex)

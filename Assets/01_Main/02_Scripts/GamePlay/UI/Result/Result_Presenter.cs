@@ -92,6 +92,15 @@ namespace DotsAndBoxes.Gameplay
                 throw new InvalidOperationException("Result_Model에 게임 결과가 설정되지 않았습니다.");
             }
 
+            if ( _model.IsSharedLocalResult )
+            {
+                _view.ShowSharedLocalResult(
+                    _model.GameResult ,
+                    _model.PlayerOneScore ,
+                    _model.PlayerTwoScore);
+                return;
+            }
+
             _view.ShowResult(
                 _model.LocalGameResult ,
                 _model.LocalPlayerScore ,

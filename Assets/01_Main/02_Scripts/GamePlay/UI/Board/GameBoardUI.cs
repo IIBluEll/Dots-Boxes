@@ -242,6 +242,15 @@ namespace DotsAndBoxes.Gameplay
 
         private void ShowCurrentResult()
         {
+            if ( IsSharedLocalGame() )
+            {
+                _resultUI.ShowSharedLocalResult(
+                    _gameBoardModel.GameResult ,
+                    _gameBoardModel.PlayerOneScore ,
+                    _gameBoardModel.PlayerTwoScore);
+                return;
+            }
+
             _resultUI.ShowResult(
                 _gameBoardModel.GameResult ,
                 GetLocalPlayerIndex() ,
@@ -254,6 +263,12 @@ namespace DotsAndBoxes.Gameplay
             int playerOneScore ,
             int playerTwoScore)
         {
+            if ( IsSharedLocalGame() )
+            {
+                _resultUI.ShowSharedLocalResult(gameResult , playerOneScore , playerTwoScore);
+                return;
+            }
+
             _resultUI.ShowResult(
                 gameResult ,
                 GetLocalPlayerIndex() ,
@@ -269,6 +284,11 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return PLAYER_INDEX_ENUM.PLAYER_ONE;
+        }
+
+        private bool IsSharedLocalGame()
+        {
+            return _gameSession is LocalGameSession;
         }
 
         private void OnSessionFailed(Exception exception)

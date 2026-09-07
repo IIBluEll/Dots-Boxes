@@ -108,6 +108,19 @@ namespace DotsAndBoxes.Gameplay
             _matchmakingSession = null;
         }
 
+        public void PrepareLocalGameSession()
+        {
+            if ( _gameSession != null )
+            {
+                throw new InvalidOperationException("다른 게임 Session이 이미 준비되어 있습니다.");
+            }
+
+            _gameSession = new LocalGameSession();
+
+            _matchmakingSession?.Dispose();
+            _matchmakingSession = null;
+        }
+
         public void ResetGameSession()
         {
             _gameSession?.Dispose();

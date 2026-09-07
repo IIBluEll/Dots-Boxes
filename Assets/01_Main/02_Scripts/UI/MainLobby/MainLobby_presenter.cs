@@ -20,6 +20,7 @@ namespace DotsAndBoxes.UI
         private bool _isCancellingMatchMaking;
 
         public event Action<MatchAssignment> MatchFound;
+        public event Action LocalMatchRequested;
         public event Action<Exception> MatchMakingFailed;
 
         public MainLobby_presenter(MainLobby_model model , MainLobby_view view , IOnlineSession session , CancellationToken cancellationToken)
@@ -65,6 +66,7 @@ namespace DotsAndBoxes.UI
             UnbindEvents();
 
             MatchFound = null;
+            LocalMatchRequested = null;
             MatchMakingFailed = null;
             _isDisposed = true;
         }
@@ -77,6 +79,7 @@ namespace DotsAndBoxes.UI
             }
 
             _view.QuickMatchRequested += OnQuickMatchActioned;
+            _view.LocalMatchRequested += OnLocalMatchActioned;
             _view.MatchMakingCancelRequested += OnMatchMakingCancelActioned;
             _session.MatchFound += OnMatchFoundActioned;
 
@@ -91,6 +94,7 @@ namespace DotsAndBoxes.UI
             }
 
             _view.QuickMatchRequested -= OnQuickMatchActioned;
+            _view.LocalMatchRequested -= OnLocalMatchActioned;
             _view.MatchMakingCancelRequested -= OnMatchMakingCancelActioned;
             _session.MatchFound -= OnMatchFoundActioned;
 
@@ -98,6 +102,16 @@ namespace DotsAndBoxes.UI
         }
 
         private void OnQuickMatchActioned() => RequestQuickMatch_async().Forget();
+
+        private void OnLocalMatchActioned()
+        {
+            if ( _isDisposed || _model.IsMatchMaking )
+            {
+                return;
+            }
+
+            LocalMatchRequested?.Invoke();
+        }
 
         private async UniTask RequestQuickMatch_async()
         {
@@ -178,6 +192,7 @@ namespace DotsAndBoxes.UI
         private void RefreshView()
         {
             _view.SetQuickMatchInteractable(!_model.IsMatchMaking);
+            _view.SetLocalMatchInteractable(!_model.IsMatchMaking);
             _view.SetMatchMakingCancelInteractable(_model.IsMatchMaking && !_isCancellingMatchMaking);
             _view.SetWaitMatchingVisible(_model.IsMatchMaking);
         }

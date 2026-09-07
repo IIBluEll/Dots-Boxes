@@ -104,6 +104,38 @@ namespace DotsAndBoxes.Gameplay
             _finalScoreTxt.text = $"{localPlayerScore} : {opponentScore}";
         }
 
+        public void ShowSharedLocalResult(
+            GAME_RESULT_ENUM gameResult ,
+            int playerOneScore ,
+            int playerTwoScore)
+        {
+            switch ( gameResult )
+            {
+                case GAME_RESULT_ENUM.PLAYER_ONE_WIN:
+                    _resultTxt.text = "플레이어 1 승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
+                    break;
+
+                case GAME_RESULT_ENUM.PLAYER_TWO_WIN:
+                    _resultTxt.text = "플레이어 2 승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
+                    break;
+
+                case GAME_RESULT_ENUM.DRAW:
+                    _resultTxt.text = "무승부";
+                    _resultTxt.color = _drawResultColor;
+                    ShowResultImage(_drawSprite);
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(gameResult) , gameResult , "표시할 수 없는 게임 결과입니다.");
+            }
+
+            _finalScoreTxt.text = $"{playerOneScore} : {playerTwoScore}";
+        }
+
         public void ShowMessage(string title , string message)
         {
             ShowResultImage(null);

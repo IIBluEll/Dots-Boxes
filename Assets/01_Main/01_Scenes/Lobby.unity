@@ -206,6 +206,10 @@ PrefabInstance:
       propertyPath: m_Sprite
       value: 
       objectReference: {fileID: 21300000, guid: b43ab3079bca4024b9ae1b9374bb43aa, type: 3}
+    - target: {fileID: 5279073183965929507, guid: 812f5afd34c68ac45aa4c4ce3d1f4dfe, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6157063955168422822, guid: 812f5afd34c68ac45aa4c4ce3d1f4dfe, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -304,6 +308,17 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 6157063955168422822, guid: 812f5afd34c68ac45aa4c4ce3d1f4dfe, type: 3}
   m_PrefabInstance: {fileID: 139528001}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &139528003 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1436205127601738996, guid: 812f5afd34c68ac45aa4c4ce3d1f4dfe, type: 3}
+  m_PrefabInstance: {fileID: 139528001}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e29b1a8efbd4b44bb3f3716e73f07ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Button
 --- !u!1001 &155657440
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1536,6 +1551,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.MainLobby_view
   _quickMatchBtn: {fileID: 186583543}
+  _localMatchBtn: {fileID: 139528003}
   _matchMakingCancelBtn: {fileID: 161033097}
   _matchMakingErrorConfirmBtn: {fileID: 851772950}
   _waitMatchingRootObj: {fileID: 1302827977}

@@ -135,12 +135,21 @@ namespace DotsAndBoxes.Gameplay
 
         public void ShowCurrentTurn(
             PLAYER_INDEX_ENUM currentPlayerIndex ,
-            PLAYER_INDEX_ENUM localPlayerIndex)
+            PLAYER_INDEX_ENUM localPlayerIndex ,
+            bool isSharedLocalGame)
         {
             bool isLocalPlayerTurn = currentPlayerIndex == localPlayerIndex;
             bool isPlayerOneTurn = currentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE;
 
-            _turnTxt.text = isLocalPlayerTurn ? "플레이어 턴" : "상대방 턴";
+            if ( isSharedLocalGame )
+            {
+                _turnTxt.text = isPlayerOneTurn ? "플레이어 1 턴" : "플레이어 2 턴";
+            }
+            else
+            {
+                _turnTxt.text = isLocalPlayerTurn ? "플레이어 턴" : "상대방 턴";
+            }
+
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
         }
 

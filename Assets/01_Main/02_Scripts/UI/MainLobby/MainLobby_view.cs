@@ -10,6 +10,7 @@ namespace DotsAndBoxes.UI
     {
         [Header("Buttons")]
         [SerializeField] private Button _quickMatchBtn;
+        [SerializeField] private Button _localMatchBtn;
         [SerializeField] private Button _matchMakingCancelBtn;
         [SerializeField] private Button _matchMakingErrorConfirmBtn;
 
@@ -21,6 +22,7 @@ namespace DotsAndBoxes.UI
         [SerializeField] private TMP_Text _matchMakingErrorTxt;
 
         public event Action QuickMatchRequested;
+        public event Action LocalMatchRequested;
         public event Action MatchMakingCancelRequested;
 
         private void Awake()
@@ -32,6 +34,7 @@ namespace DotsAndBoxes.UI
             }
 
             _quickMatchBtn.onClick.AddListener(OnQuickMatchActioned);
+            _localMatchBtn.onClick.AddListener(OnLocalMatchActioned);
             _matchMakingCancelBtn.onClick.AddListener(OnMatchMakingCancelActioned);
             _matchMakingErrorConfirmBtn.onClick.AddListener(OnMatchMakingErrorConfirmActioned);
 
@@ -45,6 +48,11 @@ namespace DotsAndBoxes.UI
                 _quickMatchBtn.onClick.RemoveListener(OnQuickMatchActioned);
             }
 
+            if ( _localMatchBtn != null )
+            {
+                _localMatchBtn.onClick.RemoveListener(OnLocalMatchActioned);
+            }
+
             if ( _matchMakingCancelBtn != null )
             {
                 _matchMakingCancelBtn.onClick.RemoveListener(OnMatchMakingCancelActioned);
@@ -56,12 +64,14 @@ namespace DotsAndBoxes.UI
             }
 
             QuickMatchRequested = null;
+            LocalMatchRequested = null;
             MatchMakingCancelRequested = null;
         }
 
         public override void Clear()
         {
             SetQuickMatchInteractable(true);
+            SetLocalMatchInteractable(true);
             SetMatchMakingCancelInteractable(true);
             SetWaitMatchingVisible(false);
             SetMatchMakingErrorVisible(false);
@@ -70,6 +80,11 @@ namespace DotsAndBoxes.UI
         public void SetQuickMatchInteractable(bool isInteractable)
         {
             _quickMatchBtn.interactable = isInteractable;
+        }
+
+        public void SetLocalMatchInteractable(bool isInteractable)
+        {
+            _localMatchBtn.interactable = isInteractable;
         }
 
         public void SetMatchMakingCancelInteractable(bool isInteractable)
@@ -101,6 +116,11 @@ namespace DotsAndBoxes.UI
             QuickMatchRequested?.Invoke();
         }
 
+        private void OnLocalMatchActioned()
+        {
+            LocalMatchRequested?.Invoke();
+        }
+
         private void OnMatchMakingCancelActioned()
         {
             MatchMakingCancelRequested?.Invoke();
@@ -115,6 +135,7 @@ namespace DotsAndBoxes.UI
         {
             bool isValid =
                 _quickMatchBtn != null &&
+                _localMatchBtn != null &&
                 _matchMakingCancelBtn != null &&
                 _matchMakingErrorConfirmBtn != null &&
                 _waitMatchingRootObj != null &&
