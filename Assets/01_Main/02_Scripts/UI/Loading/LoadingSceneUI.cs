@@ -19,6 +19,10 @@ namespace DotsAndBoxes.UI
         [Header("References")]
         [SerializeField] private TMP_Text _statusTxt;
 
+        [Header("Player Names")]
+        [SerializeField] private TMP_Text _localPlayerNameTxt;
+        [SerializeField] private TMP_Text _opponentNameTxt;
+
         private IGameSession _gameSession;
         private CancellationTokenSource _destroyCancellationTokenSource;
 
@@ -32,7 +36,20 @@ namespace DotsAndBoxes.UI
                 return;
             }
 
-            _destroyCancellationTokenSource = new CancellationTokenSource();
+            _destroyCancellationTokenSource =
+                new CancellationTokenSource();
+
+            // 닉네임의 태그 형태 문자열을 서식으로 해석하지 않습니다.
+            if ( _localPlayerNameTxt != null )
+            {
+                _localPlayerNameTxt.richText = false;
+            }
+
+            if ( _opponentNameTxt != null )
+            {
+                _opponentNameTxt.richText = false;
+            }
+
             ShowStatus("게임을 준비하고 있습니다...");
         }
 
@@ -57,14 +74,22 @@ namespace DotsAndBoxes.UI
 
         private async UniTask StartLoading_async()
         {
-            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+            OnlineSessionProvider sessionProvider =
+                OnlineSessionProvider.Instance;
 
             if ( sessionProvider == null || !sessionProvider.HasGameSession )
             {
-                Debug.LogError("준비된 GameSession을 찾을 수 없습니다." , this);
+                Debug.LogError(
+                    "준비된 GameSession을 찾을 수 없습니다." ,
+                    this);
+
                 BeginReturnToLobby("게임 정보를 찾을 수 없습니다.");
                 return;
             }
+
+            ShowPlayerNames(
+                sessionProvider.LocalDisplayName ,
+                sessionProvider.OpponentDisplayName);
 
             _gameSession = sessionProvider.GameSession;
             _gameSession.SnapshotChanged += OnSnapshotChangedActioned;
@@ -93,9 +118,10 @@ namespace DotsAndBoxes.UI
                 ShowStatus("상대 플레이어를 기다리고 있습니다...");
                 await _gameSession.Ready_async(cancellationToken);
             }
-            catch ( OperationCanceledException ) when ( cancellationToken.IsCancellationRequested )
+            catch ( OperationCanceledException )
+                when ( cancellationToken.IsCancellationRequested )
             {
-                // Scene이 종료되면서 취소된 경우이므로 오류로 처리하지 않습니다.
+                // 씬 종료에 따른 정상 취소입니다.
             }
             catch ( Exception exception )
             {
@@ -115,6 +141,21 @@ namespace DotsAndBoxes.UI
             await UniTask.Yield(
                 PlayerLoopTiming.Update ,
                 cancellationToken);
+        }
+
+        private void ShowPlayerNames(
+            string localDisplayName ,
+            string opponentDisplayName)
+        {
+            if ( _localPlayerNameTxt != null )
+            {
+                _localPlayerNameTxt.text = localDisplayName;
+            }
+
+            if ( _opponentNameTxt != null )
+            {
+                _opponentNameTxt.text = opponentDisplayName;
+            }
         }
 
         private void OnSnapshotChangedActioned(MatchSnapshot snapshot)
@@ -195,7 +236,7 @@ namespace DotsAndBoxes.UI
                 OnlineSessionProvider.Instance;
 
             if ( sessionProvider != null &&
-                 ReferenceEquals(sessionProvider.GameSession , _gameSession) )
+                ReferenceEquals(sessionProvider.GameSession , _gameSession) )
             {
                 sessionProvider.ResetGameSession();
             }
@@ -210,16 +251,24 @@ namespace DotsAndBoxes.UI
 
         private bool ValidateReferences()
         {
-            if ( _statusTxt != null )
+            if ( _statusTxt == null )
             {
-                return true;
+                Debug.LogError(
+                    "LoadingSceneUI의 Status Text 참조가 설정되지 않았습니다." ,
+                    this);
+
+                return false;
             }
 
-            Debug.LogError(
-                "LoadingSceneUI의 Status Text 참조가 설정되지 않았습니다." ,
-                this);
+            // 이름 텍스트 누락으로 게임 시작 자체가 막히지는 않게 합니다.
+            if ( _localPlayerNameTxt == null || _opponentNameTxt == null )
+            {
+                Debug.LogWarning(
+                    "LoadingSceneUI의 플레이어 이름 Text 참조를 연결해 주세요." ,
+                    this);
+            }
 
-            return false;
+            return true;
         }
     }
 }

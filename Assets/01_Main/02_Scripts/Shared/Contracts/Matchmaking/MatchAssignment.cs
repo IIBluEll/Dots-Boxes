@@ -7,5 +7,7 @@ namespace DotsAndBoxes.Shared
         public Guid MatchId { get; set; }
         public PLAYER_INDEX_ENUM LocalPlayerIndex { get; set; } = PLAYER_INDEX_ENUM.NONE;
         public Guid OpponentUserId { get; set; }
+        public string LocalDisplayName { get; set; } = "플레이어";
+        public string OpponentDisplayName { get; set; } = "상대";
     }
 }

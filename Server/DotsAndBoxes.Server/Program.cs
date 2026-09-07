@@ -6,8 +6,10 @@ using DotsAndBoxes.Server.Matchmaking;
 using DotsAndBoxes.Server.Accounts;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddGameAccounts(builder.Configuration);
 builder.Services.AddGameAuthentication(builder.Configuration);
+builder.Services.AddScoped<IPlayerProfileService , PlayerProfileService>();
 
 builder.Services.AddSingleton<MatchRoomProvider>();
 builder.Services.AddSingleton<MatchConnectionRegistry>();
