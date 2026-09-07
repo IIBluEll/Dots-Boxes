@@ -12,6 +12,7 @@ namespace DotsAndBoxes.Gameplay
         private readonly object ASSIGNMENT_LOCK = new object();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
+        private readonly Func<Task<string>> ACCESS_TOKEN_PROVIDER;
 
         private HubConnection _connection;
         private IDisposable _matchFoundSubscription;
@@ -52,7 +53,7 @@ namespace DotsAndBoxes.Gameplay
             }
         }
 
-        public SignalROnlineSession(string serverUrl , Guid userId)
+        public SignalROnlineSession(string serverUrl , Guid userId , Func<Task<string>> accessTokenProvider = null)
         {
             if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
             {
@@ -70,6 +71,7 @@ namespace DotsAndBoxes.Gameplay
 
             SERVER_URL = serverUrl.TrimEnd('/');
             USER_ID = userId;
+            ACCESS_TOKEN_PROVIDER = accessTokenProvider ?? (() => Task.FromResult(GameAccountSession.GetAccessToken(SERVER_URL, USER_ID)));
         }
 
         public async Task Start_async(
@@ -93,10 +95,10 @@ namespace DotsAndBoxes.Gameplay
             SetConnectionState(
                 GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
 
-            string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
+            string hubUrl = $"{SERVER_URL}/hubs/game";
 
             _connection = new HubConnectionBuilder()
-                .WithUrl(hubUrl)
+                .WithUrl(hubUrl, options => options.AccessTokenProvider = ACCESS_TOKEN_PROVIDER)
                 .Build();
 
             _connection.Closed += OnConnectionClosed;

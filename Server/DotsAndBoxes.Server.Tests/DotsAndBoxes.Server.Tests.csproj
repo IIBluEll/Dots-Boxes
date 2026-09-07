@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.19" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.19" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="NUnit" Version="4.2.2" />
@@ -22,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DotsAndBoxes.Server\DotsAndBoxes.Server.csproj" />
+    <Compile Include="../../Assets/01_Main/02_Scripts/GamePlay/Online/GameAccountSession.cs" Link="Authentication/GameAccountSession.cs" />
   </ItemGroup>
 
 </Project>

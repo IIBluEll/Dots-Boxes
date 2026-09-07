@@ -564,8 +564,9 @@ namespace DotsAndBoxes.Server.Hubs
 
         private bool TryGetAuthenticatedUserId(out Guid userId)
         {
-            return Guid.TryParse(Context.UserIdentifier , out userId) &&
-                   userId != Guid.Empty;
+            userId = Guid.Empty;
+            return Context.User?.Identity?.IsAuthenticated == true &&
+                   Guid.TryParse(Context.UserIdentifier , out userId) && userId != Guid.Empty;
         }
 
         private bool TryConsumeConfirmResponseLossSimulation()

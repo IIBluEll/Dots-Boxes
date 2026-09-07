@@ -2,6 +2,7 @@
 using DotsAndBoxes.Shared;
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -9,7 +10,6 @@ namespace DotsAndBoxes.UI
 {
     public sealed class MainLobbyUI : MonoBehaviour
     {
-        private const string USER_ID_KEY = "DotsAndBoxes.UserId";
         private const string LOADING_SCENE_NAME = "Loading";
 
         [Header("References")]
@@ -21,6 +21,7 @@ namespace DotsAndBoxes.UI
         private MainLobby_model _model;
         private MainLobby_presenter _presenter;
         private CancellationTokenSource _cancellationTokenSource;
+        private GooglePlayLogin _googleLogin;
 
         private void Awake()
         {
@@ -46,10 +47,10 @@ namespace DotsAndBoxes.UI
 
             try
             {
-                Guid userId = GetOrCreateUserId();
-
-                sessionProvider.Initialize(_serverUrl , userId);
-                CreatePresenter(sessionProvider.MatchmakingSession);
+                _googleLogin = FindFirstObjectByType<GooglePlayLogin>();
+                if (_googleLogin == null) _googleLogin = gameObject.AddComponent<GooglePlayLogin>();
+                CreatePresenter(null);
+                _ = LoginOnEntry_async();
             }
             catch ( Exception ex )
             {
@@ -79,7 +80,7 @@ namespace DotsAndBoxes.UI
         private void CreatePresenter(IOnlineSession session)
         {
             _model = new MainLobby_model();
-            _presenter = new MainLobby_presenter(_model , _view , session , _cancellationTokenSource.Token);
+            _presenter = new MainLobby_presenter(_model , _view , session , _cancellationTokenSource.Token, PrepareOnlineSession_async);
 
             _presenter.MatchFound += OnMatchFoundActioned;
             _presenter.LocalMatchRequested += OnLocalMatchActioned;
@@ -131,25 +132,34 @@ namespace DotsAndBoxes.UI
 
         private void OnMatchMakingFailedActioned(Exception exception)
         {
+            GameAccountSession.Clear();
             Debug.LogException(exception , this);
             _view.ShowMatchMakingError("서버에 연결할 수 없습니다.\n잠시 후 다시 시도해 주세요.");
         }
 
-        private Guid GetOrCreateUserId()
+        private async Task LoginOnEntry_async()
         {
-            string savedUserId = PlayerPrefs.GetString(USER_ID_KEY, string.Empty);
-
-            if ( Guid.TryParse(savedUserId , out Guid userId) && userId != Guid.Empty )
+            try
             {
-                return userId;
+                await _googleLogin.Login_async(_serverUrl);
             }
+            catch (OperationCanceledException) { }
+            catch (Exception)
+            {
+                // Login component shows a retryable status. Local play remains available.
+            }
+        }
 
-            Guid newUserId = Guid.NewGuid();
-
-            PlayerPrefs.SetString(USER_ID_KEY , newUserId.ToString("D"));
-            PlayerPrefs.Save();
-
-            return newUserId;
+        private async Task<IOnlineSession> PrepareOnlineSession_async()
+        {
+            Guid userId = await _googleLogin.Login_async(_serverUrl);
+            if (this == null) throw new OperationCanceledException();
+            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+            OnlineSessionProvider provider = OnlineSessionProvider.Instance;
+            if (provider == null) throw new InvalidOperationException("OnlineSessionProvider를 찾을 수 없습니다.");
+            provider.ResetSession();
+            provider.Initialize(_serverUrl, userId);
+            return provider.MatchmakingSession;
         }
 
         private bool ValidateReferences()

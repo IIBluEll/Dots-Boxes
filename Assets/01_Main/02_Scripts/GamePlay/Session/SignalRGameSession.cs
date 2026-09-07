@@ -12,6 +12,7 @@ namespace DotsAndBoxes.Gameplay
         private readonly PendingConfirmRequestStore PENDING_CONFIRM_REQUEST_STORE = new PendingConfirmRequestStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
+        private readonly Func<Task<string>> ACCESS_TOKEN_PROVIDER;
         private readonly bool SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE;
 
         private HubConnection _connection;
@@ -84,7 +85,8 @@ namespace DotsAndBoxes.Gameplay
             string serverUrl ,
             Guid matchId ,
             Guid userId ,
-            bool simulateConfirmResponseLossOnce = false)
+            bool simulateConfirmResponseLossOnce = false ,
+            Func<Task<string>> accessTokenProvider = null)
         {
             if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
             {
@@ -104,6 +106,7 @@ namespace DotsAndBoxes.Gameplay
             SERVER_URL = serverUrl.TrimEnd('/');
             MatchId = matchId;
             USER_ID = userId;
+            ACCESS_TOKEN_PROVIDER = accessTokenProvider ?? (() => Task.FromResult(GameAccountSession.GetAccessToken(SERVER_URL, USER_ID)));
             SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE = simulateConfirmResponseLossOnce;
         }
 
@@ -125,14 +128,15 @@ namespace DotsAndBoxes.Gameplay
 
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
 
-            string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
+            string hubUrl = $"{SERVER_URL}/hubs/game";
 
             if ( SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE )
             {
-                hubUrl += "&simulateConfirmResponseLossOnce=true";
+                hubUrl += "?simulateConfirmResponseLossOnce=true";
             }
 
-            _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+            _connection = new HubConnectionBuilder().WithUrl(hubUrl,
+                options => options.AccessTokenProvider = ACCESS_TOKEN_PROVIDER).Build();
             _connection.Closed += OnConnectionClosed;
 
             _matchStateChangedSubscription = _connection.On<MatchSnapshot>("MatchStateChanged" , OnMatchStateChanged);

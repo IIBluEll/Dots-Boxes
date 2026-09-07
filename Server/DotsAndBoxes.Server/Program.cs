@@ -7,6 +7,7 @@ using DotsAndBoxes.Server.Accounts;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddGameAccounts(builder.Configuration);
+builder.Services.AddGameAuthentication(builder.Configuration);
 
 builder.Services.AddSingleton<MatchRoomProvider>();
 builder.Services.AddSingleton<MatchConnectionRegistry>();
@@ -19,10 +20,13 @@ builder.Services.AddHostedService<MatchTimerService>();
 builder.Services.AddSignalR();
 
 WebApplication app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.MapGameAuthentication();
 
 if ( app.Environment.IsDevelopment() )
 {
-    app.UseMiddleware<DevelopmentUserSessionMiddleware>();
 
     app.MapPost("/development/matches" , (
         MatchRoomProvider matchRoomProvider ,
@@ -118,6 +122,9 @@ app.MapGet("/health/core" , () =>
     });
 });
 
-app.MapHub<GameHub>("/hubs/game");
+app.MapHub<GameHub>("/hubs/game", options => options.CloseOnAuthenticationExpiration = true)
+    .RequireAuthorization();
 
 app.Run();
+
+public partial class Program { }
