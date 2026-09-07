@@ -3,8 +3,10 @@ using DotsAndBoxes.Server.Matches;
 using DotsAndBoxes.Server.Authentication;
 using DotsAndBoxes.Server.Hubs;
 using DotsAndBoxes.Server.Matchmaking;
+using DotsAndBoxes.Server.Accounts;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Services.AddGameAccounts(builder.Configuration);
 
 builder.Services.AddSingleton<MatchRoomProvider>();
 builder.Services.AddSingleton<MatchConnectionRegistry>();

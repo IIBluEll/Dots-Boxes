@@ -1,0 +1,7 @@
+# Explicit opt-in only; first Compose file must be the existing host Compose file.
+# Applying this override RECREATES the game container. Obtain deployment approval first.
+services:
+  dotsandboxes-server:
+    image: dotsandboxes-server:accounts-20260907
+    env_file:
+      - C:/Users/HM_MiniPC/server/.secrets/dotsandboxes/runtime.env
