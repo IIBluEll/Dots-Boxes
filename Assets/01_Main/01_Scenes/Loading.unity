@@ -573,6 +573,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DotsAndBoxes.UI.LoadingSceneUI
   _statusTxt: {fileID: 142727753}
+  _localPlayerNameTxt: {fileID: 9223105822692868315}
+  _opponentNameTxt: {fileID: 1073292179}
 --- !u!1 &746029376
 GameObject:
   m_ObjectHideFlags: 0

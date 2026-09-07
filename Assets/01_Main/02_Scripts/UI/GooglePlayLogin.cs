@@ -241,26 +241,22 @@ namespace DotsAndBoxes.UI
             try
             {
                 LoginResponse response =
-                    JsonUtility.FromJson<LoginResponse>(
-                        request.downloadHandler.text);
+        JsonUtility.FromJson<LoginResponse>(
+            request.downloadHandler.text);
 
-                bool hasValidUserId =
-                    response != null &&
-                    Guid.TryParse(
-                        response.userId,
-                        out Guid userId) &&
-                    userId != Guid.Empty;
+                Guid userId;
+                DateTimeOffset expiresAtUtc;
 
-                bool hasValidExpiry =
-                    response != null &&
-                    DateTimeOffset.TryParse(
-                        response.expiresAtUtc,
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal,
-                        out DateTimeOffset expiresAtUtc);
-
-                if ( !hasValidUserId ||
-                    !hasValidExpiry ||
+                if ( response == null ||
+                    !Guid.TryParse(
+                        response.userId ,
+                        out userId) ||
+                    userId == Guid.Empty ||
+                    !DateTimeOffset.TryParse(
+                        response.expiresAtUtc ,
+                        CultureInfo.InvariantCulture ,
+                        DateTimeStyles.AssumeUniversal ,
+                        out expiresAtUtc) ||
                     string.IsNullOrWhiteSpace(
                         response.accessToken) )
                 {
@@ -280,7 +276,7 @@ namespace DotsAndBoxes.UI
                 ShowProfile();
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-                ShowStatus("게임 서버 로그인 성공");
+    ShowStatus("게임 서버 로그인 성공");
 #else
                 ShowStatus("PC 테스트 계정 로그인 성공");
 #endif
