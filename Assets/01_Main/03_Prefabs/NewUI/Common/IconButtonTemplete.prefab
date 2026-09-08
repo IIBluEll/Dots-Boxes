@@ -87,6 +87,7 @@ GameObject:
   - component: {fileID: 4888747743714172284}
   - component: {fileID: 1436205127601738996}
   - component: {fileID: 1183630726306622418}
+  - component: {fileID: 7833223088305665935}
   m_Layer: 5
   m_Name: IconButtonTemplete
   m_TagString: Untagged
@@ -179,6 +180,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RainbowArt.CleanFlatUI.ButtonTransition
   animator: {fileID: 6398826062647564869}
+--- !u!114 &7833223088305665935
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2385275866009006951}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3209c92a1f11eeb4e9f961170e92d8f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.Audio.ButtonSound
+  _clickCue: {fileID: 11400000, guid: 5c7f2f5156ab4dd4fbc244a3fe47ba27, type: 2}
 --- !u!1 &5045051087769653821
 GameObject:
   m_ObjectHideFlags: 0

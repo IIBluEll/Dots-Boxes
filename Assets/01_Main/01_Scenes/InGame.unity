@@ -3512,6 +3512,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1865974894}
   - component: {fileID: 1865974895}
+  - component: {fileID: 1865974896}
   m_Layer: 0
   m_Name: GameBoardUI
   m_TagString: Untagged
@@ -3547,6 +3548,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.GameBoardUI
   _gameBoardView: {fileID: 1040806567}
+  _audioFeedback: {fileID: 1865974896}
   _resultUI: {fileID: 1639798119}
   _pauseUI: {fileID: 421227677}
   _useOnlineSession: 1
@@ -3554,6 +3556,26 @@ MonoBehaviour:
   _matchId: 
   _userId: 
   _simulateConfirmResponseLossOnce: 0
+--- !u!114 &1865974896
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1865974893}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 93ef4def82205f241ae0c7cdd1e7df7f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: DotsAndBoxes.Gameplay::DotsAndBoxes.Gameplay.Audio.GameBoardAudioFeedback
+  _edgePreviewCue: {fileID: 11400000, guid: 3a2013fae574db44dbef99d8d78fd09a, type: 2}
+  _edgeConfirmedCue: {fileID: 11400000, guid: 7bfd796478371d1409a56ee791e8a328, type: 2}
+  _boxCompletedCue: {fileID: 11400000, guid: d9951891d03e8d04da5bb6c749150011, type: 2}
+  _turnChangedCue: {fileID: 11400000, guid: ed8697046271f0b499f63f4f33d0d179, type: 2}
+  _timeWarningCue: {fileID: 0}
+  _winCue: {fileID: 0}
+  _loseCue: {fileID: 0}
+  _drawCue: {fileID: 0}
 --- !u!1 &1955105427
 GameObject:
   m_ObjectHideFlags: 0

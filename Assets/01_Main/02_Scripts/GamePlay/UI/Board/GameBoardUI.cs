@@ -1,4 +1,5 @@
 using DotsAndBoxes.Shared;
+using DotsAndBoxes.Gameplay.Audio;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ namespace DotsAndBoxes.Gameplay
 
         [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
+        [SerializeField] private GameBoardAudioFeedback _audioFeedback;
         [SerializeField] private ResultUI _resultUI;
         [SerializeField] private PauseUI _pauseUI;
 
@@ -163,12 +165,20 @@ namespace DotsAndBoxes.Gameplay
             if ( _gameSession != null )
             {
                 _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
-                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
+                _gameBoardPresenter = new GameBoard_Presenter(
+                    _gameBoardModel ,
+                    _gameBoardView ,
+                    _gameSession ,
+                    _audioFeedback);
                 _gameBoardPresenter.SessionFailed += OnSessionFailed;
             }
             else
             {
-                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView);
+                _gameBoardPresenter = new GameBoard_Presenter(
+                    _gameBoardModel ,
+                    _gameBoardView ,
+                    null ,
+                    _audioFeedback);
             }
 
             _gameBoardPresenter.GameFinished += OnGameFinished;
@@ -397,7 +407,7 @@ namespace DotsAndBoxes.Gameplay
 
         private bool ValidateReferences()
         {
-            if ( _gameBoardView == null || _resultUI == null || _pauseUI == null )
+            if ( _gameBoardView == null || _audioFeedback == null || _resultUI == null || _pauseUI == null )
             {
                 Debug.LogError("GameBoardUI의 UI 참조가 설정되지 않았습니다." , this);
                 return false;

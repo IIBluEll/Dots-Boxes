@@ -1,4 +1,5 @@
 using DotsAndBoxes.Shared;
+using DotsAndBoxes.Gameplay.Audio;
 using HM.CodeBase;
 using System;
 using System.Threading.Tasks;
@@ -10,6 +11,7 @@ namespace DotsAndBoxes.Gameplay
         private readonly GameBoard_Model _model;
         private readonly GameBoard_View _view;
         private readonly IGameSession _session;
+        private readonly GameBoardAudioFeedback _audioFeedback;
 
         private bool _isBound;
         private bool _isDisposed;
@@ -21,15 +23,25 @@ namespace DotsAndBoxes.Gameplay
         public event Action<Exception> SessionFailed;
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
-            : this(model , view , null)
+            : this(model , view , null , null)
         {
         }
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view , IGameSession session)
+            : this(model , view , session , null)
+        {
+        }
+
+        public GameBoard_Presenter(
+            GameBoard_Model model ,
+            GameBoard_View view ,
+            IGameSession session ,
+            GameBoardAudioFeedback audioFeedback)
         {
             _model = model ?? throw new ArgumentNullException(nameof(model));
             _view = view ?? throw new ArgumentNullException(nameof(view));
             _session = session;
+            _audioFeedback = audioFeedback;
         }
 
         public override void Open()
@@ -89,9 +101,12 @@ namespace DotsAndBoxes.Gameplay
 
             bool hadPreviousSnapshot = _model.HasServerSnapshot;
             long previousRevision = _model.Revision;
+            SERVER_MATCH_STATE_ENUM previousMatchState = _model.MatchState;
             PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
             PLAYER_INDEX_ENUM previousPlayerIndex = _model.CurrentPlayerIndex;
             int previousLocalScore = GetPlayerScore(localPlayerIndex);
+            int previousConfirmedEdgeCount = GetConfirmedEdgeCount();
+            int previousOwnedBoxCount = GetOwnedBoxCount();
             bool isApplied = _model.ApplySnapshot(snapshot);
 
             if ( !isApplied )
@@ -112,6 +127,13 @@ namespace DotsAndBoxes.Gameplay
             }
 
             RefreshView();
+            PlaySnapshotAudioFeedback(
+                hadPreviousSnapshot ,
+                previousRevision ,
+                previousMatchState ,
+                previousPlayerIndex ,
+                previousConfirmedEdgeCount ,
+                previousOwnedBoxCount);
 
             if ( _model.IsGameFinished )
             {
@@ -378,6 +400,11 @@ namespace DotsAndBoxes.Gameplay
 
             RefreshView();
 
+            if ( !isSamePreviewSelected )
+            {
+                _audioFeedback?.PlayEdgePreview();
+            }
+
             if ( _session != null )
             {
                 int previewEdgeId = isSamePreviewSelected
@@ -441,12 +468,23 @@ namespace DotsAndBoxes.Gameplay
                 moveResult.CompletedBoxIds.Count > 0 &&
                 !moveResult.IsGameFinished;
 
+            _audioFeedback?.PlayEdgeConfirmed();
+
             _view.ShowConfirmedEdge(moveResult.EdgeId , confirmingPlayerIndex);
 
             for ( int i = 0; i < moveResult.CompletedBoxIds.Count; i++ )
             {
                 int boxId = moveResult.CompletedBoxIds[i];
                 _view.ShowOwnedBox(boxId , confirmingPlayerIndex);
+            }
+
+            if ( moveResult.CompletedBoxIds.Count > 0 )
+            {
+                _audioFeedback?.PlayBoxCompleted();
+            }
+            else if ( !moveResult.IsGameFinished && _model.CurrentPlayerIndex != confirmingPlayerIndex )
+            {
+                _audioFeedback?.PlayTurnChanged();
             }
 
             _view.SetConfirmInteractable(false);
@@ -481,6 +519,72 @@ namespace DotsAndBoxes.Gameplay
             return playerIndex == PLAYER_INDEX_ENUM.PLAYER_TWO
                 ? _model.PlayerTwoScore
                 : _model.PlayerOneScore;
+        }
+
+        private int GetConfirmedEdgeCount()
+        {
+            int confirmedEdgeCount = 0;
+
+            for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
+            {
+                if ( _model.GetEdgeOwner(edgeId) != PLAYER_INDEX_ENUM.NONE )
+                {
+                    confirmedEdgeCount++;
+                }
+            }
+
+            return confirmedEdgeCount;
+        }
+
+        private int GetOwnedBoxCount()
+        {
+            int ownedBoxCount = 0;
+
+            for ( int boxId = 0; boxId < BoardTopology.BOX_COUNT; boxId++ )
+            {
+                if ( _model.GetBoxOwner(boxId) != PLAYER_INDEX_ENUM.NONE )
+                {
+                    ownedBoxCount++;
+                }
+            }
+
+            return ownedBoxCount;
+        }
+
+        private void PlaySnapshotAudioFeedback(
+            bool hadPreviousSnapshot ,
+            long previousRevision ,
+            SERVER_MATCH_STATE_ENUM previousMatchState ,
+            PLAYER_INDEX_ENUM previousPlayerIndex ,
+            int previousConfirmedEdgeCount ,
+            int previousOwnedBoxCount)
+        {
+            bool isIncrementalSnapshot = hadPreviousSnapshot &&
+                _model.Revision == previousRevision + 1;
+
+            if ( !isIncrementalSnapshot )
+            {
+                return;
+            }
+
+            if ( GetConfirmedEdgeCount() > previousConfirmedEdgeCount )
+            {
+                _audioFeedback?.PlayEdgeConfirmed();
+            }
+
+            if ( GetOwnedBoxCount() > previousOwnedBoxCount )
+            {
+                _audioFeedback?.PlayBoxCompleted();
+            }
+
+            bool hasTurnChanged = previousMatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
+                _model.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
+                previousPlayerIndex != _model.CurrentPlayerIndex;
+
+            if ( hasTurnChanged )
+            {
+                _audioFeedback?.PlayTurnChanged();
+            }
         }
 
         private bool IsLocalExtraTurn(
