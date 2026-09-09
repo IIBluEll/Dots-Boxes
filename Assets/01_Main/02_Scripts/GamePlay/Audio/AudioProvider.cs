@@ -37,6 +37,8 @@ namespace DotsAndBoxes.Gameplay.Audio
         public float MasterVolume => _masterVolume;
         public float BgmVolume => _bgmVolume;
         public float SfxVolume => _sfxVolume;
+        public bool IsBgmEnabled => _bgmVolume > 0f;
+        public bool IsSfxEnabled => _sfxVolume > 0f;
 
         private void Awake()
         {
@@ -133,6 +135,18 @@ namespace DotsAndBoxes.Gameplay.Audio
             _sfxVolume = Mathf.Clamp01(normalizedVolume);
             PlayerPrefs.SetFloat(SFX_VOLUME_KEY , _sfxVolume);
             ApplyVolumes();
+        }
+
+        public void SetBgmEnabled(bool isEnabled)
+        {
+            SetBgmVolume(isEnabled ? DEFAULT_BGM_VOLUME : 0f);
+            SaveVolumeSettings();
+        }
+
+        public void SetSfxEnabled(bool isEnabled)
+        {
+            SetSfxVolume(isEnabled ? DEFAULT_VOLUME : 0f);
+            SaveVolumeSettings();
         }
 
         public void SaveVolumeSettings()

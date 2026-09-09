@@ -233,7 +233,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: _bgmClips.Array.size
-      value: 11
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[0]'

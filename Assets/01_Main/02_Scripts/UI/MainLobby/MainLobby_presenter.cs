@@ -1,4 +1,5 @@
 ﻿using DotsAndBoxes.Gameplay;
+using DotsAndBoxes.Gameplay.Audio;
 using DotsAndBoxes.Shared;
 using HM.CodeBase;
 using System;
@@ -86,6 +87,10 @@ namespace DotsAndBoxes.UI
             _view.QuickMatchRequested += OnQuickMatchActioned;
             _view.LocalMatchRequested += OnLocalMatchActioned;
             _view.MatchMakingCancelRequested += OnMatchMakingCancelActioned;
+            _view.SettingOpenRequested += OnSettingOpenActioned;
+            _view.SettingCloseRequested += OnSettingCloseActioned;
+            _view.BgmEnabledChanged += OnBgmEnabledChangedActioned;
+            _view.SfxEnabledChanged += OnSfxEnabledChangedActioned;
             BindSession();
 
             _isBound = true;
@@ -101,6 +106,10 @@ namespace DotsAndBoxes.UI
             _view.QuickMatchRequested -= OnQuickMatchActioned;
             _view.LocalMatchRequested -= OnLocalMatchActioned;
             _view.MatchMakingCancelRequested -= OnMatchMakingCancelActioned;
+            _view.SettingOpenRequested -= OnSettingOpenActioned;
+            _view.SettingCloseRequested -= OnSettingCloseActioned;
+            _view.BgmEnabledChanged -= OnBgmEnabledChangedActioned;
+            _view.SfxEnabledChanged -= OnSfxEnabledChangedActioned;
             UnbindSession();
 
             _isBound = false;
@@ -140,6 +149,53 @@ namespace DotsAndBoxes.UI
             }
 
             LocalMatchRequested?.Invoke();
+        }
+
+        private void OnSettingOpenActioned()
+        {
+            if ( !AudioProvider.HasInstance )
+            {
+                return;
+            }
+
+            AudioProvider audioProvider = AudioProvider.Instance;
+
+            _model.SetAudioSettings(
+                audioProvider.IsBgmEnabled ,
+                audioProvider.IsSfxEnabled);
+
+            _view.SetAudioToggleStates(
+                _model.IsBgmEnabled ,
+                _model.IsSfxEnabled);
+
+            _view.SetSettingVisible(true);
+        }
+
+        private void OnSettingCloseActioned()
+        {
+            _view.SetSettingVisible(false);
+        }
+
+        private void OnBgmEnabledChangedActioned(bool isEnabled)
+        {
+            if ( !AudioProvider.HasInstance )
+            {
+                return;
+            }
+
+            _model.SetBgmEnabled(isEnabled);
+            AudioProvider.Instance.SetBgmEnabled(isEnabled);
+        }
+
+        private void OnSfxEnabledChangedActioned(bool isEnabled)
+        {
+            if ( !AudioProvider.HasInstance )
+            {
+                return;
+            }
+
+            _model.SetSfxEnabled(isEnabled);
+            AudioProvider.Instance.SetSfxEnabled(isEnabled);
         }
 
         private async UniTask RequestQuickMatch_async()
