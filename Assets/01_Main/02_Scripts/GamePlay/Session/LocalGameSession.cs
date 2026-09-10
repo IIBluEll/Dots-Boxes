@@ -18,6 +18,11 @@ namespace DotsAndBoxes.Gameplay
 
         public event Action<MatchSnapshot> SnapshotChanged;
         public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
+        public event Action<OpponentPreviewUpdate> OpponentPreviewChanged
+        {
+            add { }
+            remove { }
+        }
 
         public Guid MatchId { get; }
         public PLAYER_INDEX_ENUM LocalPlayerIndex => PLAYER_INDEX_ENUM.NONE;
@@ -59,6 +64,77 @@ namespace DotsAndBoxes.Gameplay
             ApplyAndPublishSnapshot();
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTED);
             return Task.CompletedTask;
+        }
+
+        public Task Ready_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            if (!_isStarted)
+            {
+                InvalidOperationException exception = new InvalidOperationException("시작되지 않은 Session은 Ready 할 수 없음");
+
+                return Task.FromException(exception);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<MatchSnapshot> Leave_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled<MatchSnapshot>(cancellationToken);
+            }
+
+            if ( !_isStarted )
+            {
+                return Task.FromException<MatchSnapshot>(
+                    new InvalidOperationException("게임 세션이 시작되지 않았습니다."));
+            }
+
+            return Task.FromResult(CurrentSnapshot);
+        }
+
+        public Task<MATCH_COMMAND_ERROR_ENUM> SetPreviewEdge_async(
+            int edgeId ,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if ( cancellationToken.IsCancellationRequested )
+            {
+                return Task.FromCanceled<MATCH_COMMAND_ERROR_ENUM>(cancellationToken);
+            }
+
+            if ( !_isStarted )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE);
+            }
+
+            if ( edgeId == OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.NONE);
+            }
+
+            if ( edgeId < 0 || edgeId >= BoardTopology.EDGE_COUNT )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.INVALID_EDGE);
+            }
+
+            if ( BOARD.GetEdge(edgeId).IsConfirmed )
+            {
+                return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.EDGE_ALREADY_CONFIRMED);
+            }
+
+            return Task.FromResult(MATCH_COMMAND_ERROR_ENUM.NONE);
         }
 
         public Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)

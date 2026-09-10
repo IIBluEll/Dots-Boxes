@@ -1,0 +1,16 @@
+**
+
+!Server/
+!Server/DotsAndBoxes.Server/
+!Server/DotsAndBoxes.Server/**
+!Server/DotsAndBoxes.Shared/
+!Server/DotsAndBoxes.Shared/**
+
+!Assets/
+!Assets/01_Main/
+!Assets/01_Main/02_Scripts/
+!Assets/01_Main/02_Scripts/Shared/
+!Assets/01_Main/02_Scripts/Shared/**
+
+**/bin/
+**/obj/

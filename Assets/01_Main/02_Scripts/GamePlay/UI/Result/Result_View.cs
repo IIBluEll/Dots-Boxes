@@ -3,6 +3,7 @@ using HM.CodeBase;
 using System;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 namespace DotsAndBoxes.Gameplay
@@ -10,19 +11,40 @@ namespace DotsAndBoxes.Gameplay
     [DisallowMultipleComponent]
     public sealed class Result_View : AView
     {
-        [Header("Texts")]
+        [Header("Root")]
+        [SerializeField] private GameObject _resultPopupObj;
+
+        [Space(5f), Header("Texts")]
         [SerializeField] private TMP_Text _resultTxt;
         [SerializeField] private TMP_Text _finalScoreTxt;
 
+        [Space(5f), Header("Result Image")]
+        [SerializeField] private Image _resultImg;
+        [SerializeField] private Sprite _winSprite;
+        [SerializeField] private Sprite _loseSprite;
+        [SerializeField] private Sprite _drawSprite;
+
         [Space(5f), Header("Buttons")]
-        [SerializeField] private Button _restartBtn;
+        [SerializeField] private Button _lobbyBtn;
 
         [Space(5f), Header("Colors")]
-        [SerializeField] private Color _playerOneResultColor = new Color(0.1f, 0.45f, 1f, 1f);
-        [SerializeField] private Color _playerTwoResultColor = new Color(1f, 0.4f, 0.1f, 1f);
+        [FormerlySerializedAs("_playerOneResultColor")]
+        [SerializeField] private Color _winResultColor = new Color(1f, 0.72f, 0.12f, 1f);
+        [FormerlySerializedAs("_playerTwoResultColor")]
+        [SerializeField] private Color _loseResultColor = new Color(1f, 0.3f, 0.25f, 1f);
         [SerializeField] private Color _drawResultColor = Color.white;
 
-        public event Action RestartRequested;
+        public event Action LobbyRequested;
+
+        public override void Open()
+        {
+            _resultPopupObj.SetActive(true);
+        }
+
+        public override void Close()
+        {
+            _resultPopupObj.SetActive(false);
+        }
 
         private void Awake()
         {
@@ -32,14 +54,14 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _restartBtn.onClick.AddListener(OnRestartButtonClicked);
+            _lobbyBtn.onClick.AddListener(OnLobbyButtonClicked);
         }
 
         private void OnDestroy()
         {
-            if ( _restartBtn != null )
+            if ( _lobbyBtn != null )
             {
-                _restartBtn.onClick.RemoveListener(OnRestartButtonClicked);
+                _lobbyBtn.onClick.RemoveListener(OnLobbyButtonClicked);
             }
         }
 
@@ -47,44 +69,103 @@ namespace DotsAndBoxes.Gameplay
         {
             _resultTxt.text = string.Empty;
             _finalScoreTxt.text = string.Empty;
+            ShowResultImage(null);
         }
 
-        public void ShowResult(GAME_RESULT_ENUM gameResult , int playerOneScore , int playerTwoScore)
+        public void ShowResult(
+            LOCAL_GAME_RESULT_ENUM localGameResult ,
+            int localPlayerScore ,
+            int opponentScore)
+        {
+            switch ( localGameResult )
+            {
+                case LOCAL_GAME_RESULT_ENUM.WIN:
+                    _resultTxt.text = "승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
+                    break;
+
+                case LOCAL_GAME_RESULT_ENUM.LOSE:
+                    _resultTxt.text = "패배";
+                    _resultTxt.color = _loseResultColor;
+                    ShowResultImage(_loseSprite);
+                    break;
+
+                case LOCAL_GAME_RESULT_ENUM.DRAW:
+                    _resultTxt.text = "무승부";
+                    _resultTxt.color = _drawResultColor;
+                    ShowResultImage(_drawSprite);
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(localGameResult) , localGameResult , "표시할 수 없는 게임 결과입니다.");
+            }
+
+            _finalScoreTxt.text = $"{localPlayerScore} : {opponentScore}";
+        }
+
+        public void ShowSharedLocalResult(
+            GAME_RESULT_ENUM gameResult ,
+            int playerOneScore ,
+            int playerTwoScore)
         {
             switch ( gameResult )
             {
                 case GAME_RESULT_ENUM.PLAYER_ONE_WIN:
-                    _resultTxt.text = "PLAYER 1 WIN";
-                    _resultTxt.color = _playerOneResultColor;
+                    _resultTxt.text = "플레이어 1 승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
                     break;
 
                 case GAME_RESULT_ENUM.PLAYER_TWO_WIN:
-                    _resultTxt.text = "PLAYER 2 WIN";
-                    _resultTxt.color = _playerTwoResultColor;
+                    _resultTxt.text = "플레이어 2 승리!";
+                    _resultTxt.color = _winResultColor;
+                    ShowResultImage(_winSprite);
                     break;
 
                 case GAME_RESULT_ENUM.DRAW:
-                    _resultTxt.text = "DRAW";
+                    _resultTxt.text = "무승부";
                     _resultTxt.color = _drawResultColor;
+                    ShowResultImage(_drawSprite);
                     break;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(gameResult) , gameResult , "표시할 수 없는 게임 결과입니다.");
             }
 
-            _finalScoreTxt.text = $"PLAYER 1  {playerOneScore} : {playerTwoScore}  PLAYER 2";
+            _finalScoreTxt.text = $"{playerOneScore} : {playerTwoScore}";
         }
 
-        private void OnRestartButtonClicked()
+        public void ShowMessage(string title , string message)
         {
-            RestartRequested?.Invoke();
+            ShowResultImage(null);
+            _resultTxt.text = string.IsNullOrWhiteSpace(title) ? "NOTICE" : title;
+            _resultTxt.color = _drawResultColor;
+            _finalScoreTxt.text = string.IsNullOrWhiteSpace(message) ? "확인 후 Lobby로 이동해 주세요." : message;
+        }
+
+        private void OnLobbyButtonClicked()
+        {
+            LobbyRequested?.Invoke();
+        }
+
+        private void ShowResultImage(Sprite resultSprite)
+        {
+            if ( _resultImg == null )
+            {
+                return;
+            }
+
+            _resultImg.sprite = resultSprite;
+            _resultImg.gameObject.SetActive(resultSprite != null);
         }
 
         private bool ValidateReferences()
         {
-            bool isValid = _resultTxt != null &&
-                           _finalScoreTxt != null &&
-                           _restartBtn != null;
+            bool isValid = _resultPopupObj != null &&
+               _resultTxt != null &&
+               _finalScoreTxt != null &&
+               _lobbyBtn != null;
 
             if ( !isValid )
             {

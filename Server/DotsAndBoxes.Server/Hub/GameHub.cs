@@ -1,4 +1,5 @@
-﻿using DotsAndBoxes.Server.Matches;
+﻿using DotsAndBoxes.Server.Accounts;
+using DotsAndBoxes.Server.Matches;
 using DotsAndBoxes.Server.Matchmaking;
 using DotsAndBoxes.Shared;
 using Microsoft.AspNetCore.SignalR;
@@ -18,6 +19,7 @@ namespace DotsAndBoxes.Server.Hubs
         private readonly IHostApplicationLifetime APPLICATION_LIFETIME;
         private readonly IHostEnvironment HOST_ENVIRONMENT;
         private readonly ILogger<GameHub> LOGGER;
+        private readonly IPlayerProfileService PLAYER_PROFILE_SERVICE;
 
         public GameHub(
             MatchRoomProvider matchRoomProvider ,
@@ -27,7 +29,8 @@ namespace DotsAndBoxes.Server.Hubs
             MatchmakingQueue matchmakingQueue ,
             IHostApplicationLifetime applicationLifetime ,
             IHostEnvironment hostEnvironment ,
-            ILogger<GameHub> logger)
+            ILogger<GameHub> logger ,
+            IPlayerProfileService playerProfileService)
         {
             MATCH_ROOM_PROVIDER = matchRoomProvider ??
                 throw new ArgumentNullException(nameof(matchRoomProvider));
@@ -50,7 +53,11 @@ namespace DotsAndBoxes.Server.Hubs
             HOST_ENVIRONMENT = hostEnvironment ??
                 throw new ArgumentNullException(nameof(hostEnvironment));
 
-            LOGGER = logger ?? throw new ArgumentNullException(nameof(logger));
+            LOGGER = logger ??
+                throw new ArgumentNullException(nameof(logger));
+
+            PLAYER_PROFILE_SERVICE = playerProfileService ??
+                throw new ArgumentNullException(nameof(playerProfileService));
         }
 
         public async Task<MatchSnapshot> JoinMatch(Guid matchId)
@@ -98,7 +105,7 @@ namespace DotsAndBoxes.Server.Hubs
                 }
 
                 LOGGER.LogInformation(
-                    "User joined match. MatchId={MatchId}, UserId={UserId}, ConnectionId={ConnectionId}",
+                    "User joined match. MatchId={MatchId}, UserId={UserId}, ConnectionId={ConnectionId}" ,
                     matchId ,
                     userId ,
                     Context.ConnectionId);
@@ -159,7 +166,7 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             LOGGER.LogInformation(
-                "Player ready state confirmed. MatchId={MatchId}, UserId={UserId}, MatchState={MatchState}, Revision={Revision}",
+                "Player ready state confirmed. MatchId={MatchId}, UserId={UserId}, MatchState={MatchState}, Revision={Revision}" ,
                 matchId ,
                 userId ,
                 readyResult.Snapshot.MatchState ,
@@ -176,22 +183,25 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             if ( MATCH_CONNECTION_REGISTRY.ContainsUser(userId) ||
-                 MATCH_ROOM_PROVIDER.ContainsUserInOpenMatch(userId) )
+                MATCH_ROOM_PROVIDER.ContainsUserInOpenMatch(userId) )
             {
                 throw new HubException("이미 진행 중인 매치가 있습니다.");
             }
 
-            MatchmakingEnqueueResult enqueueResult = MATCHMAKING_QUEUE.Enqueue(userId);
+            MatchmakingEnqueueResult enqueueResult =
+        MATCHMAKING_QUEUE.Enqueue(userId);
 
-            if ( enqueueResult.State == MATCHMAKING_ENQUEUE_STATE_ENUM.ALREADY_QUEUED )
+            if ( enqueueResult.State ==
+                MATCHMAKING_ENQUEUE_STATE_ENUM.ALREADY_QUEUED )
             {
                 throw new HubException("이미 매칭 대기열에 있습니다.");
             }
 
-            if ( enqueueResult.State == MATCHMAKING_ENQUEUE_STATE_ENUM.QUEUED )
+            if ( enqueueResult.State ==
+                MATCHMAKING_ENQUEUE_STATE_ENUM.QUEUED )
             {
                 LOGGER.LogInformation(
-                    "User entered matchmaking queue. UserId={UserId}, QueueCount={QueueCount}",
+                    "User entered matchmaking queue. UserId={UserId}, QueueCount={QueueCount}" ,
                     userId ,
                     MATCHMAKING_QUEUE.Count);
 
@@ -200,30 +210,44 @@ namespace DotsAndBoxes.Server.Hubs
 
             Guid playerOneUserId = enqueueResult.OpponentUserId;
             Guid playerTwoUserId = userId;
+
             MatchRoom matchRoom = CreateAndRegisterMatchRoom(
-                playerOneUserId ,
-                playerTwoUserId);
+        playerOneUserId,
+        playerTwoUserId);
+
+            // 계정 식별은 기존 인증된 UserId를 그대로 사용합니다.
+            // 이 조회는 화면에 표시할 이름만 가져옵니다.
+            MatchDisplayNames displayNames =
+        await PLAYER_PROFILE_SERVICE.GetMatchDisplayNames_async(
+            playerOneUserId,
+            playerTwoUserId);
 
             MatchAssignment playerOneAssignment = new MatchAssignment
             {
-                MatchId = matchRoom.MatchId ,
-                LocalPlayerIndex = PLAYER_INDEX_ENUM.PLAYER_ONE ,
-                OpponentUserId = playerTwoUserId
+                MatchId = matchRoom.MatchId,
+                LocalPlayerIndex = PLAYER_INDEX_ENUM.PLAYER_ONE,
+                OpponentUserId = playerTwoUserId,
+                LocalDisplayName = displayNames.PlayerOneDisplayName,
+                OpponentDisplayName = displayNames.PlayerTwoDisplayName
             };
 
             MatchAssignment playerTwoAssignment = new MatchAssignment
             {
-                MatchId = matchRoom.MatchId ,
-                LocalPlayerIndex = PLAYER_INDEX_ENUM.PLAYER_TWO ,
-                OpponentUserId = playerOneUserId
+                MatchId = matchRoom.MatchId,
+                LocalPlayerIndex = PLAYER_INDEX_ENUM.PLAYER_TWO,
+                OpponentUserId = playerOneUserId,
+                LocalDisplayName = displayNames.PlayerTwoDisplayName,
+                OpponentDisplayName = displayNames.PlayerOneDisplayName
             };
 
             await Task.WhenAll(
-                Clients.User(playerOneUserId.ToString()).MatchFound(playerOneAssignment) ,
-                Clients.User(playerTwoUserId.ToString()).MatchFound(playerTwoAssignment));
+                Clients.User(playerOneUserId.ToString("D"))
+                    .MatchFound(playerOneAssignment) ,
+                Clients.User(playerTwoUserId.ToString("D"))
+                    .MatchFound(playerTwoAssignment));
 
             LOGGER.LogInformation(
-                "Matchmaking completed. MatchId={MatchId}, PlayerOneUserId={PlayerOneUserId}, PlayerTwoUserId={PlayerTwoUserId}, StartingPlayer={StartingPlayer}",
+                "Matchmaking completed. MatchId={MatchId}, PlayerOneUserId={PlayerOneUserId}, PlayerTwoUserId={PlayerTwoUserId}, StartingPlayer={StartingPlayer}" ,
                 matchRoom.MatchId ,
                 playerOneUserId ,
                 playerTwoUserId ,
@@ -244,7 +268,7 @@ namespace DotsAndBoxes.Server.Hubs
             if ( wasCancelled )
             {
                 LOGGER.LogInformation(
-                    "User cancelled matchmaking. UserId={UserId}, QueueCount={QueueCount}",
+                    "User cancelled matchmaking. UserId={UserId}, QueueCount={QueueCount}" ,
                     userId ,
                     MATCHMAKING_QUEUE.Count);
             }
@@ -261,7 +285,7 @@ namespace DotsAndBoxes.Server.Hubs
                     if ( MATCHMAKING_QUEUE.TryCancel(disconnectedUserId) )
                     {
                         LOGGER.LogInformation(
-                            "Disconnected user removed from matchmaking queue. UserId={UserId}",
+                            "Disconnected user removed from matchmaking queue. UserId={UserId}" ,
                             disconnectedUserId);
                     }
                 }
@@ -280,7 +304,7 @@ namespace DotsAndBoxes.Server.Hubs
                     if ( finalSnapshot != null )
                     {
                         LOGGER.LogInformation(
-                            "Disconnected player changed match state. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, MatchState={MatchState}",
+                            "Disconnected player changed match state. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, MatchState={MatchState}" ,
                             matchId ,
                             userId ,
                             finalSnapshot.Revision ,
@@ -340,7 +364,7 @@ namespace DotsAndBoxes.Server.Hubs
             if ( response.IsAccepted && response.Snapshot != null )
             {
                 LOGGER.LogInformation(
-                    "ConfirmEdge accepted. MatchId={MatchId}, UserId={UserId}, RequestId={RequestId}, Revision={Revision}, EdgeId={EdgeId}",
+                    "ConfirmEdge accepted. MatchId={MatchId}, UserId={UserId}, RequestId={RequestId}, Revision={Revision}, EdgeId={EdgeId}" ,
                     request.MatchId ,
                     userId ,
                     request.RequestId ,
@@ -365,7 +389,7 @@ namespace DotsAndBoxes.Server.Hubs
             else
             {
                 LOGGER.LogWarning(
-                    "ConfirmEdge rejected. MatchId={MatchId}, UserId={UserId}, RequestId={RequestId}, ExpectedRevision={ExpectedRevision}, EdgeId={EdgeId}, Error={Error}",
+                    "ConfirmEdge rejected. MatchId={MatchId}, UserId={UserId}, RequestId={RequestId}, ExpectedRevision={ExpectedRevision}, EdgeId={EdgeId}, Error={Error}" ,
                     request.MatchId ,
                     userId ,
                     request.RequestId ,
@@ -375,6 +399,79 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             return response;
+        }
+
+        public async Task<MATCH_COMMAND_ERROR_ENUM> SetPreviewEdge(
+            PreviewEdgeRequest request)
+        {
+            if ( request == null )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.INVALID_REQUEST;
+            }
+
+            if ( !TryGetAuthenticatedUserId(out Guid userId) )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.UNAUTHORIZED;
+            }
+
+            bool isRegisteredParticipant = MATCH_CONNECTION_REGISTRY.TryGetParticipant(
+                Context.ConnectionId ,
+                out Guid registeredMatchId ,
+                out Guid registeredUserId);
+
+            if ( !isRegisteredParticipant || registeredMatchId != request.MatchId || registeredUserId != userId )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.NOT_A_MATCH_PLAYER;
+            }
+
+            if ( !MATCH_ROOM_PROVIDER.TryGet(request.MatchId , out MatchRoom? matchRoom) || matchRoom == null )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_FOUND;
+            }
+
+            MatchRoomPreviewResult result = await matchRoom.TrySetPreviewEdge_async(
+                userId ,
+                request ,
+                Context.ConnectionAborted);
+
+            if ( !result.IsAccepted )
+            {
+                LOGGER.LogDebug(
+                    "PreviewEdge rejected. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, Sequence={Sequence}, EdgeId={EdgeId}, Error={Error}" ,
+                    request.MatchId ,
+                    userId ,
+                    request.ExpectedRevision ,
+                    request.PreviewSequence ,
+                    request.EdgeId ,
+                    result.Error);
+
+                return result.Error;
+            }
+
+            if ( result.Update == null )
+            {
+                LOGGER.LogError(
+                    "PreviewEdge accepted without update. MatchId={MatchId}, UserId={UserId}, Sequence={Sequence}" ,
+                    request.MatchId ,
+                    userId ,
+                    request.PreviewSequence);
+
+                return MATCH_COMMAND_ERROR_ENUM.INTERNAL_ERROR;
+            }
+
+            await Clients
+                .OthersInGroup(CreateMatchGroupName(request.MatchId))
+                .OpponentPreviewChanged(result.Update);
+
+            LOGGER.LogDebug(
+                "PreviewEdge broadcast. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, Sequence={Sequence}, EdgeId={EdgeId}" ,
+                request.MatchId ,
+                userId ,
+                result.Update.Revision ,
+                result.Update.PreviewSequence ,
+                result.Update.EdgeId);
+
+            return MATCH_COMMAND_ERROR_ENUM.NONE;
         }
 
         public async Task<MatchSnapshot> RequestSync(Guid matchId)
@@ -441,7 +538,7 @@ namespace DotsAndBoxes.Server.Hubs
             }
 
             LOGGER.LogInformation(
-                "User left match. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, MatchState={MatchState}",
+                "User left match. MatchId={MatchId}, UserId={UserId}, Revision={Revision}, MatchState={MatchState}" ,
                 matchId ,
                 userId ,
                 finalSnapshot.Revision ,
@@ -491,8 +588,9 @@ namespace DotsAndBoxes.Server.Hubs
 
         private bool TryGetAuthenticatedUserId(out Guid userId)
         {
-            return Guid.TryParse(Context.UserIdentifier , out userId) &&
-                   userId != Guid.Empty;
+            userId = Guid.Empty;
+            return Context.User?.Identity?.IsAuthenticated == true &&
+                   Guid.TryParse(Context.UserIdentifier , out userId) && userId != Guid.Empty;
         }
 
         private bool TryConsumeConfirmResponseLossSimulation()

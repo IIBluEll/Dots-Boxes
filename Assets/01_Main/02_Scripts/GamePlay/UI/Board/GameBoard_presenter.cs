@@ -1,4 +1,5 @@
 using DotsAndBoxes.Shared;
+using DotsAndBoxes.Gameplay.Audio;
 using HM.CodeBase;
 using System;
 using System.Threading.Tasks;
@@ -10,25 +11,37 @@ namespace DotsAndBoxes.Gameplay
         private readonly GameBoard_Model _model;
         private readonly GameBoard_View _view;
         private readonly IGameSession _session;
+        private readonly GameBoardAudioFeedback _audioFeedback;
 
         private bool _isBound;
         private bool _isDisposed;
         private bool _isOpen;
         private bool _isConfirming;
+        private bool _isLocalExtraTurn;
 
         public event Action<GAME_RESULT_ENUM, int, int> GameFinished;
         public event Action<Exception> SessionFailed;
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view)
-            : this(model , view , null)
+            : this(model , view , null , null)
         {
         }
 
         public GameBoard_Presenter(GameBoard_Model model , GameBoard_View view , IGameSession session)
+            : this(model , view , session , null)
+        {
+        }
+
+        public GameBoard_Presenter(
+            GameBoard_Model model ,
+            GameBoard_View view ,
+            IGameSession session ,
+            GameBoardAudioFeedback audioFeedback)
         {
             _model = model ?? throw new ArgumentNullException(nameof(model));
             _view = view ?? throw new ArgumentNullException(nameof(view));
             _session = session;
+            _audioFeedback = audioFeedback;
         }
 
         public override void Open()
@@ -45,6 +58,7 @@ namespace DotsAndBoxes.Gameplay
                 _model.ApplySnapshot(_session.CurrentSnapshot);
             }
 
+            _isLocalExtraTurn = false;
             RefreshView();
         }
 
@@ -56,7 +70,11 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isOpen = false;
-            _view.Close();
+
+            if ( _view != null )
+            {
+                _view.Close();
+            }
         }
 
         public override void Dispose()
@@ -72,6 +90,7 @@ namespace DotsAndBoxes.Gameplay
             SessionFailed = null;
 
             _isConfirming = false;
+            _isLocalExtraTurn = false;
             _isOpen = false;
             _isDisposed = true;
         }
@@ -80,6 +99,14 @@ namespace DotsAndBoxes.Gameplay
         {
             ThrowIfDisposed();
 
+            bool hadPreviousSnapshot = _model.HasServerSnapshot;
+            long previousRevision = _model.Revision;
+            SERVER_MATCH_STATE_ENUM previousMatchState = _model.MatchState;
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+            PLAYER_INDEX_ENUM previousPlayerIndex = _model.CurrentPlayerIndex;
+            int previousLocalScore = GetPlayerScore(localPlayerIndex);
+            int previousConfirmedEdgeCount = GetConfirmedEdgeCount();
+            int previousOwnedBoxCount = GetOwnedBoxCount();
             bool isApplied = _model.ApplySnapshot(snapshot);
 
             if ( !isApplied )
@@ -87,12 +114,26 @@ namespace DotsAndBoxes.Gameplay
                 return false;
             }
 
+            _isLocalExtraTurn = IsLocalExtraTurn(
+                hadPreviousSnapshot ,
+                previousRevision ,
+                previousPlayerIndex ,
+                previousLocalScore ,
+                localPlayerIndex);
+
             if ( !_isOpen )
             {
                 return true;
             }
 
             RefreshView();
+            PlaySnapshotAudioFeedback(
+                hadPreviousSnapshot ,
+                previousRevision ,
+                previousMatchState ,
+                previousPlayerIndex ,
+                previousConfirmedEdgeCount ,
+                previousOwnedBoxCount);
 
             if ( _model.IsGameFinished )
             {
@@ -100,6 +141,23 @@ namespace DotsAndBoxes.Gameplay
             }
 
             return true;
+        }
+
+        public void Tick(DateTimeOffset utcNow)
+        {
+            ThrowIfDisposed();
+
+            if ( !_isOpen )
+            {
+                return;
+            }
+
+            if ( _model.MatchState != SERVER_MATCH_STATE_ENUM.STARTING && _model.MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
+            {
+                return;
+            }
+
+            RefreshMatchState(utcNow);
         }
 
         private void BindEvents()
@@ -116,6 +174,7 @@ namespace DotsAndBoxes.Gameplay
             {
                 _session.SnapshotChanged += OnSnapshotChanged;
                 _session.ConnectionStateChanged += OnConnectionStateChanged;
+                _session.OpponentPreviewChanged += OnOpponentPreviewChanged;
             }
 
             _isBound = true;
@@ -128,13 +187,17 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.EdgeSelected -= OnEdgeSelected;
-            _view.ConfirmRequested -= OnConfirmRequested;
+            if ( _view != null )
+            {
+                _view.EdgeSelected -= OnEdgeSelected;
+                _view.ConfirmRequested -= OnConfirmRequested;
+            }
 
             if ( _session != null )
             {
                 _session.SnapshotChanged -= OnSnapshotChanged;
                 _session.ConnectionStateChanged -= OnConnectionStateChanged;
+                _session.OpponentPreviewChanged -= OnOpponentPreviewChanged;
             }
 
             _isBound = false;
@@ -172,6 +235,13 @@ namespace DotsAndBoxes.Gameplay
                 _view.ShowLocalPreviewEdge(_model.PreviewEdgeId);
             }
 
+            if ( _model.HasOpponentPreview )
+            {
+                _view.ShowOpponentPreviewEdge(
+                    _model.OpponentPreviewEdgeId ,
+                    _model.OpponentPreviewPlayerIndex);
+            }
+
             if ( !canSelectEdge )
             {
                 _view.SetBoardInteractable(false);
@@ -183,13 +253,89 @@ namespace DotsAndBoxes.Gameplay
 
         private void RefreshStatus()
         {
-            _view.ShowScores(_model.PlayerOneScore , _model.PlayerTwoScore);
-            _view.ShowCurrentTurn(_model.CurrentPlayerIndex);
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+            PLAYER_INDEX_ENUM opponentPlayerIndex = localPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? PLAYER_INDEX_ENUM.PLAYER_TWO : PLAYER_INDEX_ENUM.PLAYER_ONE;
+
+            _view.ShowScores(GetPlayerScore(localPlayerIndex) , GetPlayerScore(opponentPlayerIndex));
+            RefreshMatchState(DateTimeOffset.UtcNow);
+        }
+
+        private void RefreshMatchState(DateTimeOffset utcNow)
+        {
+            _view.SetTurnTimerVisible(false);
+
+            switch ( _model.MatchState )
+            {
+                case SERVER_MATCH_STATE_ENUM.NONE:
+                    _view.ShowMatchStatus("WAITING FOR SERVER...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.WAITING_FOR_PLAYERS:
+                    _view.ShowMatchStatus("WAITING FOR PLAYERS...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.WAITING_FOR_READY:
+                    _view.ShowMatchStatus("WAITING FOR READY...");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.STARTING:
+                    RefreshStartingStatus(utcNow);
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.ACTIVE:
+                    RefreshActiveStatus(utcNow);
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.FINISHED:
+                    _view.ShowMatchStatus("GAME FINISHED");
+                    break;
+
+                case SERVER_MATCH_STATE_ENUM.CANCELLED:
+                    _view.ShowMatchStatus("MATCH CANCELLED");
+                    break;
+
+                default:
+                    _view.ShowMatchStatus("UNKNOWN MATCH STATE");
+                    break;
+            }
+        }
+
+        private void RefreshStartingStatus(DateTimeOffset utcNow)
+        {
+            int countdownNumber = _model.GetStartCountdownNumber(utcNow);
+
+            if ( countdownNumber <= 0 )
+            {
+                _view.ShowMatchStatus("STARTING...");
+                return;
+            }
+
+            _view.ShowMatchStatus(countdownNumber.ToString());
+        }
+
+        private void RefreshActiveStatus(DateTimeOffset utcNow)
+        {
+            PLAYER_INDEX_ENUM localPlayerIndex = GetLocalPlayerIndex();
+
+            _view.ShowCurrentTurn(
+                _model.CurrentPlayerIndex ,
+                localPlayerIndex ,
+                IsSharedLocalGame());
+
+            if ( !_model.TurnDeadLineUtc.HasValue )
+            {
+                return;
+            }
+
+            int turnCountdownNumber = _model.GetTurnCountdownNumber(utcNow);
+
+            _view.SetTurnTimerVisible(true);
+            _view.ShowTurnTimer(turnCountdownNumber);
         }
 
         private void RefreshConnectionState()
         {
-            bool hasOnlineSession = _session != null;
+            bool hasOnlineSession = _session != null && !IsSharedLocalGame();
 
             _view.SetConnectionStateVisible(hasOnlineSession);
 
@@ -242,21 +388,31 @@ namespace DotsAndBoxes.Gameplay
             }
 
             int previousPreviewEdgeId = _model.PreviewEdgeId;
-            bool isPreviewChanged = _model.TrySetPreviewEdge(edgeId);
+            bool isSamePreviewSelected = previousPreviewEdgeId == edgeId;
+            bool isPreviewChanged = isSamePreviewSelected
+                ? _model.TryClearPreviewEdge(edgeId)
+                : _model.TrySetPreviewEdge(edgeId);
 
             if ( !isPreviewChanged )
             {
                 return;
             }
 
-            if ( previousPreviewEdgeId != GameBoard_Model.NO_PREVIEW_EDGE_ID &&
-                previousPreviewEdgeId != edgeId )
+            RefreshView();
+
+            if ( !isSamePreviewSelected )
             {
-                _view.ShowAvailableEdge(previousPreviewEdgeId);
+                _audioFeedback?.PlayEdgePreview();
             }
 
-            _view.ShowLocalPreviewEdge(edgeId);
-            _view.SetConfirmInteractable(true);
+            if ( _session != null )
+            {
+                int previewEdgeId = isSamePreviewSelected
+                    ? OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID
+                    : edgeId;
+
+                _ = SetOnlinePreview_async(previewEdgeId);
+            }
         }
 
         private async void OnConfirmRequested()
@@ -273,6 +429,19 @@ namespace DotsAndBoxes.Gameplay
         private void OnSnapshotChanged(MatchSnapshot snapshot)
         {
             ApplySnapshot(snapshot);
+        }
+
+        private void OnOpponentPreviewChanged(OpponentPreviewUpdate update)
+        {
+            if ( _isDisposed || !_model.TryApplyOpponentPreview(update) )
+            {
+                return;
+            }
+
+            if ( _isOpen )
+            {
+                RefreshView();
+            }
         }
 
         private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
@@ -295,12 +464,27 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
+            _isLocalExtraTurn = confirmingPlayerIndex == GetLocalPlayerIndex() &&
+                moveResult.CompletedBoxIds.Count > 0 &&
+                !moveResult.IsGameFinished;
+
+            _audioFeedback?.PlayEdgeConfirmed();
+
             _view.ShowConfirmedEdge(moveResult.EdgeId , confirmingPlayerIndex);
 
             for ( int i = 0; i < moveResult.CompletedBoxIds.Count; i++ )
             {
                 int boxId = moveResult.CompletedBoxIds[i];
                 _view.ShowOwnedBox(boxId , confirmingPlayerIndex);
+            }
+
+            if ( moveResult.CompletedBoxIds.Count > 0 )
+            {
+                _audioFeedback?.PlayBoxCompleted();
+            }
+            else if ( !moveResult.IsGameFinished && _model.CurrentPlayerIndex != confirmingPlayerIndex )
+            {
+                _audioFeedback?.PlayTurnChanged();
             }
 
             _view.SetConfirmInteractable(false);
@@ -313,6 +497,109 @@ namespace DotsAndBoxes.Gameplay
 
             _view.SetBoardInteractable(false);
             NotifyGameFinished();
+        }
+
+        private PLAYER_INDEX_ENUM GetLocalPlayerIndex()
+        {
+            if ( _session != null && _session.LocalPlayerIndex != PLAYER_INDEX_ENUM.NONE )
+            {
+                return _session.LocalPlayerIndex;
+            }
+
+            return PLAYER_INDEX_ENUM.PLAYER_ONE;
+        }
+
+        private bool IsSharedLocalGame()
+        {
+            return _session is LocalGameSession;
+        }
+
+        private int GetPlayerScore(PLAYER_INDEX_ENUM playerIndex)
+        {
+            return playerIndex == PLAYER_INDEX_ENUM.PLAYER_TWO
+                ? _model.PlayerTwoScore
+                : _model.PlayerOneScore;
+        }
+
+        private int GetConfirmedEdgeCount()
+        {
+            int confirmedEdgeCount = 0;
+
+            for ( int edgeId = 0; edgeId < BoardTopology.EDGE_COUNT; edgeId++ )
+            {
+                if ( _model.GetEdgeOwner(edgeId) != PLAYER_INDEX_ENUM.NONE )
+                {
+                    confirmedEdgeCount++;
+                }
+            }
+
+            return confirmedEdgeCount;
+        }
+
+        private int GetOwnedBoxCount()
+        {
+            int ownedBoxCount = 0;
+
+            for ( int boxId = 0; boxId < BoardTopology.BOX_COUNT; boxId++ )
+            {
+                if ( _model.GetBoxOwner(boxId) != PLAYER_INDEX_ENUM.NONE )
+                {
+                    ownedBoxCount++;
+                }
+            }
+
+            return ownedBoxCount;
+        }
+
+        private void PlaySnapshotAudioFeedback(
+            bool hadPreviousSnapshot ,
+            long previousRevision ,
+            SERVER_MATCH_STATE_ENUM previousMatchState ,
+            PLAYER_INDEX_ENUM previousPlayerIndex ,
+            int previousConfirmedEdgeCount ,
+            int previousOwnedBoxCount)
+        {
+            bool isIncrementalSnapshot = hadPreviousSnapshot &&
+                _model.Revision == previousRevision + 1;
+
+            if ( !isIncrementalSnapshot )
+            {
+                return;
+            }
+
+            if ( GetConfirmedEdgeCount() > previousConfirmedEdgeCount )
+            {
+                _audioFeedback?.PlayEdgeConfirmed();
+            }
+
+            if ( GetOwnedBoxCount() > previousOwnedBoxCount )
+            {
+                _audioFeedback?.PlayBoxCompleted();
+            }
+
+            bool hasTurnChanged = previousMatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
+                _model.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE &&
+                previousPlayerIndex != _model.CurrentPlayerIndex;
+
+            if ( hasTurnChanged )
+            {
+                _audioFeedback?.PlayTurnChanged();
+            }
+        }
+
+        private bool IsLocalExtraTurn(
+            bool hadPreviousSnapshot ,
+            long previousRevision ,
+            PLAYER_INDEX_ENUM previousPlayerIndex ,
+            int previousLocalScore ,
+            PLAYER_INDEX_ENUM localPlayerIndex)
+        {
+            return hadPreviousSnapshot &&
+                _model.Revision == previousRevision + 1 &&
+                previousPlayerIndex == localPlayerIndex &&
+                _model.CurrentPlayerIndex == localPlayerIndex &&
+                GetPlayerScore(localPlayerIndex) > previousLocalScore &&
+                _model.MatchState == SERVER_MATCH_STATE_ENUM.ACTIVE;
         }
 
         private async Task ConfirmOnlinePreview_async()
@@ -346,6 +633,28 @@ namespace DotsAndBoxes.Gameplay
                 if ( _isOpen && !_isDisposed )
                 {
                     RefreshView();
+                }
+            }
+        }
+
+        private async Task SetOnlinePreview_async(int edgeId)
+        {
+            try
+            {
+                MATCH_COMMAND_ERROR_ENUM error = await _session.SetPreviewEdge_async(edgeId);
+
+                if ( _isDisposed || error != MATCH_COMMAND_ERROR_ENUM.REVISION_MISMATCH )
+                {
+                    return;
+                }
+
+                await _session.RequestSync_async();
+            }
+            catch ( Exception exception )
+            {
+                if ( !_isDisposed )
+                {
+                    SessionFailed?.Invoke(exception);
                 }
             }
         }

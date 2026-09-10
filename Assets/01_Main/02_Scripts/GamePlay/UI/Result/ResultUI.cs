@@ -12,7 +12,7 @@ namespace DotsAndBoxes.Gameplay
         private Result_Model _resultModel;
         private Result_Presenter _resultPresenter;
 
-        public event Action RestartRequested;
+        public event Action LobbyRequested;
 
         private void Awake()
         {
@@ -25,7 +25,9 @@ namespace DotsAndBoxes.Gameplay
 
             _resultModel = new Result_Model();
             _resultPresenter = new Result_Presenter(_resultModel , _resultView);
-            _resultPresenter.RestartRequested += OnRestartRequested;
+
+            _resultPresenter.LobbyRequested += OnLobbyRequested;
+
             _resultPresenter.Close();
         }
 
@@ -36,14 +38,33 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _resultPresenter.RestartRequested -= OnRestartRequested;
+            _resultPresenter.LobbyRequested -= OnLobbyRequested;
+
             _resultPresenter.Dispose();
         }
 
-        public void ShowResult(GAME_RESULT_ENUM gameResult , int playerOneScore , int playerTwoScore)
+        public void ShowResult(
+            GAME_RESULT_ENUM gameResult ,
+            PLAYER_INDEX_ENUM localPlayerIndex ,
+            int playerOneScore ,
+            int playerTwoScore)
         {
-            _resultModel.SetResult(gameResult , playerOneScore , playerTwoScore);
+            _resultModel.SetResult(gameResult , localPlayerIndex , playerOneScore , playerTwoScore);
             _resultPresenter.Open();
+        }
+
+        public void ShowSharedLocalResult(
+            GAME_RESULT_ENUM gameResult ,
+            int playerOneScore ,
+            int playerTwoScore)
+        {
+            _resultModel.SetSharedLocalResult(gameResult , playerOneScore , playerTwoScore);
+            _resultPresenter.Open();
+        }
+
+        public void ShowMessage(string title , string message)
+        {
+            _resultPresenter.OpenMessage(title , message);
         }
 
         public void Close()
@@ -51,9 +72,9 @@ namespace DotsAndBoxes.Gameplay
             _resultPresenter?.Close();
         }
 
-        private void OnRestartRequested()
+        private void OnLobbyRequested()
         {
-            RestartRequested?.Invoke();
+            LobbyRequested?.Invoke();
         }
     }
 }

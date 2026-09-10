@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.UI;
 
@@ -30,6 +31,7 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _availableEdgeColor = new Color(0.31f, 0.31f, 0.31f, 1f);
         [SerializeField] private Color _availableBoxColor = new Color(0.55f, 0.55f, 0.55f, 0.56f);
         [SerializeField] private Color _localPreviewEdgeColor = new Color(0.15f, 0.85f, 1f, 1f);
+        [SerializeField, Range(0f , 1f)] private float _opponentPreviewAlpha = 0.55f;
 
         [Space(5f), Header("Buttons")]
         [SerializeField] private Button _confirmBtn;
@@ -41,20 +43,21 @@ namespace DotsAndBoxes.Gameplay
         [SerializeField] private Color _playerTwoBoxColor = new Color(1f, 0.4f, 0.1f, 0.35f);
 
         [Space(5f), Header("Status")]
-        [SerializeField] private TMP_Text _playerOneScoreTxt;
-        [SerializeField] private TMP_Text _playerTwoScoreTxt;
+        [FormerlySerializedAs("_playerOneScoreTxt")]
+        [SerializeField] private TMP_Text _localPlayerScoreTxt;
+        [FormerlySerializedAs("_playerTwoScoreTxt")]
+        [SerializeField] private TMP_Text _opponentScoreTxt;
         [SerializeField] private TMP_Text _turnTxt;
+        [SerializeField] private TMP_Text _turnTimerTxt;
         [SerializeField] private TMP_Text _connectionStateTxt;
 
         private BoardEdgeButton[] _edgeButtons;
-        private Image[] _boxImages;
+        private BoardBoxVisual[] _boxVisuals;
 
         public IReadOnlyList<BoardEdgeButton> EdgeButtons => _edgeButtons;
-        public IReadOnlyList<Image> BoxImages => _boxImages;
 
         public event Action<int> EdgeSelected;
         public event Action ConfirmRequested;
-
         private void Awake()
         {
             if (!ValidateReferences())
@@ -66,6 +69,7 @@ namespace DotsAndBoxes.Gameplay
             BuildBoard();
 
             _confirmBtn.onClick.AddListener(OnConfirmButtonClicked);
+
             SetConfirmInteractable(false);
         }
 
@@ -92,16 +96,16 @@ namespace DotsAndBoxes.Gameplay
 
         public override void Clear()
         {
-            if ( _edgeButtons == null || _boxImages == null )
+            if ( _edgeButtons == null || _boxVisuals == null )
             {
                 return;
             }
 
             ShowAllEdgesAvailable();
 
-            for ( int boxId = 0; boxId < _boxImages.Length; boxId++ )
+            for ( int boxId = 0; boxId < _boxVisuals.Length; boxId++ )
             {
-                _boxImages[ boxId ].color = _availableBoxColor;
+                _boxVisuals[ boxId ].SetAvailable(_availableBoxColor);
             }
 
             SetConfirmInteractable(false);
@@ -117,18 +121,51 @@ namespace DotsAndBoxes.Gameplay
             return _edgeButtons[edgeId];
         }
 
-        public void ShowScores(int playerOneScore , int playerTwoScore)
+        public void ShowScores(int localPlayerScore , int opponentScore)
         {
-            _playerOneScoreTxt.text = $"PLAYER 1 : {playerOneScore}";
-            _playerTwoScoreTxt.text = $"PLAYER 2 : {playerTwoScore}";
+            _localPlayerScoreTxt.text = $"{localPlayerScore}";
+            _opponentScoreTxt.text = $"{opponentScore}";
         }
 
-        public void ShowCurrentTurn(PLAYER_INDEX_ENUM currentPlayerIndex)
+        public void ShowMatchStatus(string status)
         {
+            _turnTxt.text = status;
+            _turnTxt.color = Color.white;
+        }
+
+        public void ShowCurrentTurn(
+            PLAYER_INDEX_ENUM currentPlayerIndex ,
+            PLAYER_INDEX_ENUM localPlayerIndex ,
+            bool isSharedLocalGame)
+        {
+            bool isLocalPlayerTurn = currentPlayerIndex == localPlayerIndex;
             bool isPlayerOneTurn = currentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE;
 
-            _turnTxt.text = isPlayerOneTurn ? "PLAYER 1 TURN" : "PLAYER 2 TURN";
+            if ( isSharedLocalGame )
+            {
+                _turnTxt.text = isPlayerOneTurn ? "플레이어 1 턴" : "플레이어 2 턴";
+            }
+            else
+            {
+                _turnTxt.text = isLocalPlayerTurn ? "플레이어 턴" : "상대방 턴";
+            }
+
             _turnTxt.color = isPlayerOneTurn ? _playerOneEdgeColor : _playerTwoEdgeColor;
+        }
+
+        public void SetTurnTimerVisible(bool isVisible)
+        {
+            if ( _turnTimerTxt.gameObject.activeSelf == isVisible )
+            {
+                return;
+            }
+
+            _turnTimerTxt.gameObject.SetActive(isVisible);
+        }
+
+        public void ShowTurnTimer(int turnCountdownNumber)
+        {
+            _turnTimerTxt.text = $"{turnCountdownNumber}";
         }
 
         public void SetConnectionStateVisible(bool isVisible)
@@ -173,19 +210,29 @@ namespace DotsAndBoxes.Gameplay
         public void ShowAvailableEdge(int edgeId)
         {
             BoardEdgeButton edgeBtn = GetEdgeButton(edgeId);
-            edgeBtn.SetVisual(_availableEdgeColor, true);
+            edgeBtn.SetVisual(_availableEdgeColor, EDGE_LINE_STYLE_ENUM.DASHED, true);
         }
 
         public void ShowLocalPreviewEdge(int edgeId)
         {
             BoardEdgeButton edgeBtn = GetEdgeButton(edgeId);
-            edgeBtn.SetVisual(_localPreviewEdgeColor, true);
+            edgeBtn.SetVisual(_localPreviewEdgeColor, EDGE_LINE_STYLE_ENUM.SOLID, true);
+        }
+
+        public void ShowOpponentPreviewEdge(int edgeId , PLAYER_INDEX_ENUM opponentPlayerIndex)
+        {
+            Color previewColor = opponentPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                ? _playerOneEdgeColor
+                : _playerTwoEdgeColor;
+
+            previewColor.a = _opponentPreviewAlpha;
+            GetEdgeButton(edgeId).SetVisual(previewColor, EDGE_LINE_STYLE_ENUM.SOLID, false);
         }
 
         private void BuildBoard()
         {
             _edgeButtons = new BoardEdgeButton[BoardTopology.EDGE_COUNT];
-            _boxImages = new Image[BoardTopology.BOX_COUNT];
+            _boxVisuals = new BoardBoxVisual[BoardTopology.BOX_COUNT];
 
             BuildBoxes();
             BuildEdges();
@@ -209,7 +256,7 @@ namespace DotsAndBoxes.Gameplay
         {
             Color edgeColor = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneEdgeColor : _playerTwoEdgeColor;
 
-            GetEdgeButton(edgeId).SetVisual(edgeColor , false);
+            GetEdgeButton(edgeId).SetVisual(edgeColor, EDGE_LINE_STYLE_ENUM.SOLID, false);
         }
 
         public void ShowOwnedBox(int boxId , PLAYER_INDEX_ENUM ownerPlayerIndex)
@@ -219,7 +266,9 @@ namespace DotsAndBoxes.Gameplay
                 throw new ArgumentOutOfRangeException(nameof(boxId));
             }
 
-            _boxImages[ boxId ].color = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneBoxColor : _playerTwoBoxColor;
+            Color ownerColor = ownerPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE ? _playerOneBoxColor : _playerTwoBoxColor;
+
+            _boxVisuals[ boxId ].ShowOwned(ownerColor);
         }
 
         private void BuildBoxes()
@@ -230,13 +279,14 @@ namespace DotsAndBoxes.Gameplay
                 {
                     int boxId = BoardTopology.GetBoxID(row, column);
                     Image boxImg = Instantiate(_boxPrefabImg, _boardRootRectTrans, false);
+                    BoardBoxVisual boxVisual = boxImg.GetComponent<BoardBoxVisual>();
 
                     boxImg.name = $"boxImg_{boxId:00}";
-                    boxImg.color = _availableBoxColor;
                     boxImg.raycastTarget = false;
+                    boxVisual.SetAvailable(_availableBoxColor);
                     ConfigureBoxRect(boxImg.rectTransform, row, column);
 
-                    _boxImages[boxId] = boxImg;
+                    _boxVisuals[boxId] = boxVisual;
                 }
             }
         }
@@ -281,7 +331,7 @@ namespace DotsAndBoxes.Gameplay
         {
             BoardEdgeButton edgeBtn = Instantiate(_edgePrefabBtn, _boardRootRectTrans, false);
 
-            edgeBtn.Initialize(edgeId, isHorizontal, _edgeVisibleThickness);
+            edgeBtn.Initialize(edgeId, isHorizontal, _edgeVisibleThickness, _dotSize * 0.5f);
             edgeBtn.EdgeSelected += OnEdgeSelected;
 
             RectTransform edgeRectTrans = edgeBtn.GetComponent<RectTransform>();
@@ -366,6 +416,7 @@ namespace DotsAndBoxes.Gameplay
         {
             ConfirmRequested?.Invoke();
         }
+
         private void OnEdgeSelected(int edgeId)
         {
             EdgeSelected?.Invoke(edgeId);
@@ -374,14 +425,15 @@ namespace DotsAndBoxes.Gameplay
         private bool ValidateReferences()
         {
             bool isValid = _boardRootRectTrans != null &&
-                           _dotPrefabImg != null &&
-                           _boxPrefabImg != null &&
-                           _edgePrefabBtn != null &&
-                           _confirmBtn != null &&
-                           _playerOneScoreTxt != null &&
-                           _playerTwoScoreTxt != null &&
-                           _turnTxt != null &&
-                           _connectionStateTxt != null;
+               _dotPrefabImg != null &&
+               _boxPrefabImg != null &&
+               _edgePrefabBtn != null &&
+               _confirmBtn != null &&
+               _localPlayerScoreTxt != null &&
+               _opponentScoreTxt != null &&
+               _turnTxt != null &&
+               _turnTimerTxt != null &&
+               _connectionStateTxt != null;
 
             if (!isValid)
             {

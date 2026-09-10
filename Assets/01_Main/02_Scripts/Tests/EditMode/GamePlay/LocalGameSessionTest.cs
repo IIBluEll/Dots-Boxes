@@ -9,6 +9,29 @@ namespace DotsAndBoxes.Gameplay.Tests
     public sealed class LocalGameSessionTests
     {
         [Test]
+        public async Task Ready_async_AfterStart_DoesNotChangeLocalSnapshot()
+        {
+            LocalGameSession session = new LocalGameSession();
+
+            await session.Start_async();
+
+            long revisionBeforeReady =
+        session.CurrentSnapshot.Revision;
+
+            await session.Ready_async();
+
+            Assert.That(
+                session.CurrentSnapshot.Revision ,
+                Is.EqualTo(revisionBeforeReady));
+
+            Assert.That(
+                session.CurrentSnapshot.MatchState ,
+                Is.EqualTo(SERVER_MATCH_STATE_ENUM.ACTIVE));
+
+            session.Dispose();
+        }
+
+        [Test]
         public void OnlineSessionLaunchOptions_WithNoOnlineArguments_UsesInspectorValues()
         {
             bool parsed = OnlineSessionLaunchOptions.TryCreate(

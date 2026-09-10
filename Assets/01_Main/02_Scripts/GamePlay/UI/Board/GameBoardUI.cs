@@ -1,17 +1,25 @@
 using DotsAndBoxes.Shared;
+using DotsAndBoxes.Gameplay.Audio;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DotsAndBoxes.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class GameBoardUI : MonoBehaviour
     {
+        private const string LOBBY_SCENE_NAME = "Lobby";
+        private const string CONNECTION_LOST_TITLE = "CONNECTION LOST";
+        private const string CONNECTION_LOST_MESSAGE = "서버와 연결이 끊어졌습니다.\nLobby로 이동해 주세요.";
+
         [Header("References")]
         [SerializeField] private GameBoard_View _gameBoardView;
+        [SerializeField] private GameBoardAudioFeedback _audioFeedback;
         [SerializeField] private ResultUI _resultUI;
+        [SerializeField] private PauseUI _pauseUI;
 
         [Header("Game Mode")]
         [SerializeField] private bool _useOnlineSession;
@@ -26,18 +34,30 @@ namespace DotsAndBoxes.Gameplay
         private GameBoard_Presenter _gameBoardPresenter;
         private IGameSession _gameSession;
         private CancellationTokenSource _destroyCancellationTokenSource;
+
         private bool _hasStarted;
+        private bool _ownsGameSession;
+        private bool _isLeaving;
 
         private void Awake()
         {
-            if ( !ApplyCommandLineOptions() || !ValidateReferences() )
+            if ( !ApplyCommandLineOptions() )
+            {
+                enabled = false;
+                return;
+            }
+
+            ApplyPreparedGameSession();
+
+            if ( !ValidateReferences() )
             {
                 enabled = false;
                 return;
             }
 
             _destroyCancellationTokenSource = new CancellationTokenSource();
-            _resultUI.RestartRequested += OnRestartRequested;
+            _resultUI.LobbyRequested += OnLobbyRequested;
+            _pauseUI.ExitRequested += OnExitRequestedActioned;
 
             CreateGameBoard();
         }
@@ -47,10 +67,20 @@ namespace DotsAndBoxes.Gameplay
             _hasStarted = true;
             Open();
 
-            if ( _gameSession != null )
+            if ( _gameSession != null && _ownsGameSession )
             {
                 _ = StartOnlineSession_async();
             }
+        }
+
+        private void Update()
+        {
+            if ( _gameBoardPresenter == null )
+            {
+                return;
+            }
+
+            _gameBoardPresenter.Tick(DateTimeOffset.UtcNow);
         }
 
         private void OnEnable()
@@ -75,7 +105,12 @@ namespace DotsAndBoxes.Gameplay
 
             if ( _resultUI != null )
             {
-                _resultUI.RestartRequested -= OnRestartRequested;
+                _resultUI.LobbyRequested -= OnLobbyRequested;
+            }
+
+            if ( _pauseUI != null )
+            {
+                _pauseUI.ExitRequested -= OnExitRequestedActioned;
             }
 
             ReleaseGameBoard();
@@ -97,14 +132,23 @@ namespace DotsAndBoxes.Gameplay
         public void Close()
         {
             _gameBoardPresenter?.Close();
-            _resultUI?.Close();
+
+            if ( _resultUI != null )
+            {
+                _resultUI.Close();
+            }
+
+            if ( _pauseUI != null )
+            {
+                _pauseUI.Close();
+            }
         }
 
         private void CreateGameBoard()
         {
             _gameBoardModel = new GameBoard_Model();
 
-            if ( _useOnlineSession )
+            if ( _gameSession == null && _useOnlineSession )
             {
                 Guid matchId = Guid.Parse(_matchId);
                 Guid userId = Guid.Parse(_userId);
@@ -114,13 +158,27 @@ namespace DotsAndBoxes.Gameplay
                     matchId ,
                     userId ,
                     _simulateConfirmResponseLossOnce);
+
+                _ownsGameSession = true;
+            }
+
+            if ( _gameSession != null )
+            {
                 _gameSession.ConnectionStateChanged += OnConnectionStateChanged;
-                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView , _gameSession);
+                _gameBoardPresenter = new GameBoard_Presenter(
+                    _gameBoardModel ,
+                    _gameBoardView ,
+                    _gameSession ,
+                    _audioFeedback);
                 _gameBoardPresenter.SessionFailed += OnSessionFailed;
             }
             else
             {
-                _gameBoardPresenter = new GameBoard_Presenter(_gameBoardModel , _gameBoardView);
+                _gameBoardPresenter = new GameBoard_Presenter(
+                    _gameBoardModel ,
+                    _gameBoardView ,
+                    null ,
+                    _audioFeedback);
             }
 
             _gameBoardPresenter.GameFinished += OnGameFinished;
@@ -139,18 +197,45 @@ namespace DotsAndBoxes.Gameplay
             if ( _gameSession != null )
             {
                 _gameSession.ConnectionStateChanged -= OnConnectionStateChanged;
-                _gameSession.Dispose();
+
+                if ( _ownsGameSession )
+                {
+                    _gameSession.Dispose();
+                }
+
                 _gameSession = null;
+                _ownsGameSession = false;
             }
 
             _gameBoardModel = null;
         }
 
+        private void ApplyPreparedGameSession()
+        {
+            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+
+            if ( sessionProvider == null || !sessionProvider.HasGameSession )
+            {
+                return;
+            }
+
+            _gameSession = sessionProvider.GameSession;
+            _ownsGameSession = false;
+            _useOnlineSession = true;
+        }
+
         private async Task StartOnlineSession_async()
         {
+            IGameSession session = _gameSession;
+            CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
+
             try
             {
-                await _gameSession.Start_async(_destroyCancellationTokenSource.Token);
+                await session.Start_async(cancellationToken);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                await session.Ready_async(cancellationToken);
             }
             catch ( OperationCanceledException )
             {
@@ -167,8 +252,18 @@ namespace DotsAndBoxes.Gameplay
 
         private void ShowCurrentResult()
         {
+            if ( IsSharedLocalGame() )
+            {
+                _resultUI.ShowSharedLocalResult(
+                    _gameBoardModel.GameResult ,
+                    _gameBoardModel.PlayerOneScore ,
+                    _gameBoardModel.PlayerTwoScore);
+                return;
+            }
+
             _resultUI.ShowResult(
                 _gameBoardModel.GameResult ,
+                GetLocalPlayerIndex() ,
                 _gameBoardModel.PlayerOneScore ,
                 _gameBoardModel.PlayerTwoScore);
         }
@@ -178,43 +273,147 @@ namespace DotsAndBoxes.Gameplay
             int playerOneScore ,
             int playerTwoScore)
         {
-            _resultUI.ShowResult(gameResult , playerOneScore , playerTwoScore);
+            if ( IsSharedLocalGame() )
+            {
+                _resultUI.ShowSharedLocalResult(gameResult , playerOneScore , playerTwoScore);
+                return;
+            }
+
+            _resultUI.ShowResult(
+                gameResult ,
+                GetLocalPlayerIndex() ,
+                playerOneScore ,
+                playerTwoScore);
+        }
+
+        private PLAYER_INDEX_ENUM GetLocalPlayerIndex()
+        {
+            if ( _gameSession != null && _gameSession.LocalPlayerIndex != PLAYER_INDEX_ENUM.NONE )
+            {
+                return _gameSession.LocalPlayerIndex;
+            }
+
+            return PLAYER_INDEX_ENUM.PLAYER_ONE;
+        }
+
+        private bool IsSharedLocalGame()
+        {
+            return _gameSession is LocalGameSession;
         }
 
         private void OnSessionFailed(Exception exception)
         {
             Debug.LogException(exception , this);
+            ShowConnectionErrorIfNeeded();
         }
 
         private void OnConnectionStateChanged(GAME_SESSION_CONNECTION_STATE_ENUM connectionState)
         {
             Debug.Log($"[Game Session] ConnectionState={connectionState}" , this);
+            ShowConnectionErrorIfNeeded();
         }
 
-        private void OnRestartRequested()
+        private void ShowConnectionErrorIfNeeded()
         {
-            if ( _gameSession != null )
+            if ( _isLeaving ||
+                 _gameSession == null ||
+                 _gameBoardModel == null ||
+                 _gameBoardModel.IsGameFinished )
             {
-                Debug.LogWarning("온라인 재대전은 아직 구현되지 않았습니다." , this);
                 return;
             }
 
-            ReleaseGameBoard();
-            _gameBoardView.Clear();
+            bool isConnectionLost = _gameSession.ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED || _gameSession.ConnectionState == GAME_SESSION_CONNECTION_STATE_ENUM.FAULTED;
 
-            CreateGameBoard();
-            _gameBoardPresenter.Open();
+            if ( !isConnectionLost )
+            {
+                return;
+            }
+
+            _resultUI.ShowMessage(CONNECTION_LOST_TITLE , CONNECTION_LOST_MESSAGE);
+        }
+
+        private void OnExitRequestedActioned()
+        {
+            if ( _isLeaving )
+            {
+                return;
+            }
+
+            _ = LeaveGame_async();
+        }
+
+        private void OnLobbyRequested()
+        {
+            if ( _isLeaving )
+            {
+                return;
+            }
+
+            _isLeaving = true;
+            ReturnToLobby();
+        }
+
+        private async Task LeaveGame_async()
+        {
+            _isLeaving = true;
+
+            CancellationToken cancellationToken = _destroyCancellationTokenSource.Token;
+
+            try
+            {
+                if ( _gameSession != null )
+                {
+                    await _gameSession.Leave_async(cancellationToken);
+                }
+            }
+            catch ( OperationCanceledException )
+            {
+                // Scene 종료로 취소된 경우에도 아래 finally에서 안전하게 정리합니다.
+            }
+            catch ( Exception exception )
+            {
+                if ( this != null )
+                {
+                    Debug.LogException(exception , this);
+                }
+            }
+            finally
+            {
+                if ( this != null )
+                {
+                    Close();
+                    ReturnToLobby();
+                }
+            }
+        }
+
+        private void ReturnToLobby()
+        {
+            if ( this == null )
+            {
+                return;
+            }
+
+            OnlineSessionProvider sessionProvider = OnlineSessionProvider.Instance;
+
+            if ( _gameSession != null && sessionProvider != null && ReferenceEquals(sessionProvider.GameSession , _gameSession) )
+            {
+                sessionProvider.ResetGameSession();
+            }
+
+            SceneManager.LoadScene(LOBBY_SCENE_NAME);
         }
 
         private bool ValidateReferences()
         {
-            if ( _gameBoardView == null || _resultUI == null )
+            if ( _gameBoardView == null || _audioFeedback == null || _resultUI == null || _pauseUI == null )
             {
                 Debug.LogError("GameBoardUI의 UI 참조가 설정되지 않았습니다." , this);
                 return false;
             }
 
-            if ( !_useOnlineSession )
+            if ( _gameSession != null || !_useOnlineSession )
             {
                 return true;
             }

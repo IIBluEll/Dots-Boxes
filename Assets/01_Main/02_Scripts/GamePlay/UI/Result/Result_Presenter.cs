@@ -11,7 +11,7 @@ namespace DotsAndBoxes.Gameplay
         private bool _isBound;
         private bool _isDisposed;
 
-        public event Action RestartRequested;
+        public event Action LobbyRequested;
 
         public Result_Presenter(Result_Model model , Result_View view)
         {
@@ -26,6 +26,15 @@ namespace DotsAndBoxes.Gameplay
 
             _view.Open();
             RefreshView();
+        }
+
+        public void OpenMessage(string title , string message)
+        {
+            ThrowIfDisposed();
+            BindEvents();
+
+            _view.Open();
+            _view.ShowMessage(title , message);
         }
 
         public override void Close()
@@ -46,7 +55,9 @@ namespace DotsAndBoxes.Gameplay
             }
 
             UnbindEvents();
-            RestartRequested = null;
+
+            LobbyRequested = null;
+
             _isDisposed = true;
         }
 
@@ -57,7 +68,8 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.RestartRequested += OnRestartRequested;
+            _view.LobbyRequested += OnLobbyRequested;
+
             _isBound = true;
         }
 
@@ -68,7 +80,8 @@ namespace DotsAndBoxes.Gameplay
                 return;
             }
 
-            _view.RestartRequested -= OnRestartRequested;
+            _view.LobbyRequested -= OnLobbyRequested;
+
             _isBound = false;
         }
 
@@ -79,13 +92,24 @@ namespace DotsAndBoxes.Gameplay
                 throw new InvalidOperationException("Result_Model에 게임 결과가 설정되지 않았습니다.");
             }
 
-            _view.ShowResult(_model.GameResult , _model.PlayerOneScore , _model.PlayerTwoScore);
+            if ( _model.IsSharedLocalResult )
+            {
+                _view.ShowSharedLocalResult(
+                    _model.GameResult ,
+                    _model.PlayerOneScore ,
+                    _model.PlayerTwoScore);
+                return;
+            }
+
+            _view.ShowResult(
+                _model.LocalGameResult ,
+                _model.LocalPlayerScore ,
+                _model.OpponentScore);
         }
 
-        private void OnRestartRequested()
+        private void OnLobbyRequested()
         {
-            Close();
-            RestartRequested?.Invoke();
+            LobbyRequested?.Invoke();
         }
 
         private void ThrowIfDisposed()

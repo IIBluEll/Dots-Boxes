@@ -13,6 +13,7 @@
         REVISION_MISMATCH = 8,
         DUPLICATE_REQUEST_CONFLICT = 9,
         INTERNAL_ERROR = 10,
-        INVALID_REQUEST = 11
+        INVALID_REQUEST = 11,
+        RATE_LIMITED = 12
     }
 }

@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 if ( [string]::IsNullOrWhiteSpace($ClientPath) )
 {
-    $ClientPath = Join-Path $PSScriptRoot "..\..\Builds\Windows\DotsAndBoxes.exe"
+    $ClientPath = Join-Path $PSScriptRoot "..\..\Builds\Dots&Boxes.exe"
 }
 
 $resolvedClientPath = (Resolve-Path -LiteralPath $ClientPath).Path

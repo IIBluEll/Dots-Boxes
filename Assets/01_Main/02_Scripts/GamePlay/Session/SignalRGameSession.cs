@@ -12,17 +12,26 @@ namespace DotsAndBoxes.Gameplay
         private readonly PendingConfirmRequestStore PENDING_CONFIRM_REQUEST_STORE = new PendingConfirmRequestStore();
         private readonly string SERVER_URL;
         private readonly Guid USER_ID;
+        private readonly Func<Task<string>> ACCESS_TOKEN_PROVIDER;
         private readonly bool SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE;
 
         private HubConnection _connection;
         private IDisposable _matchStateChangedSubscription;
+        private IDisposable _opponentPreviewChangedSubscription;
         private SynchronizationContext _unitySynchronizationContext;
+
+        private long _previewSequence;
+        private long _lastOpponentPreviewRevision = -1;
+        private long _lastOpponentPreviewSequence;
         private bool _isStarted;
+        private bool _isReady;
+        private bool _hasLeft;
         private bool _isDisposed;
         private bool _hasSimulatedConfirmResponseLoss;
 
         public event Action<MatchSnapshot> SnapshotChanged;
         public event Action<GAME_SESSION_CONNECTION_STATE_ENUM> ConnectionStateChanged;
+        public event Action<OpponentPreviewUpdate> OpponentPreviewChanged;
 
         public Guid MatchId { get; }
         public GAME_SESSION_CONNECTION_STATE_ENUM ConnectionState { get; private set; } = GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED;
@@ -76,7 +85,8 @@ namespace DotsAndBoxes.Gameplay
             string serverUrl ,
             Guid matchId ,
             Guid userId ,
-            bool simulateConfirmResponseLossOnce = false)
+            bool simulateConfirmResponseLossOnce = false ,
+            Func<Task<string>> accessTokenProvider = null)
         {
             if ( !Uri.TryCreate(serverUrl , UriKind.Absolute , out _) )
             {
@@ -96,6 +106,7 @@ namespace DotsAndBoxes.Gameplay
             SERVER_URL = serverUrl.TrimEnd('/');
             MatchId = matchId;
             USER_ID = userId;
+            ACCESS_TOKEN_PROVIDER = accessTokenProvider ?? (() => Task.FromResult(GameAccountSession.GetAccessToken(SERVER_URL, USER_ID)));
             SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE = simulateConfirmResponseLossOnce;
         }
 
@@ -117,17 +128,19 @@ namespace DotsAndBoxes.Gameplay
 
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.CONNECTING);
 
-            string hubUrl = $"{SERVER_URL}/hubs/game?userId={USER_ID:D}";
+            string hubUrl = $"{SERVER_URL}/hubs/game";
 
             if ( SIMULATE_CONFIRM_RESPONSE_LOSS_ONCE )
             {
-                hubUrl += "&simulateConfirmResponseLossOnce=true";
+                hubUrl += "?simulateConfirmResponseLossOnce=true";
             }
 
-            _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+            _connection = new HubConnectionBuilder().WithUrl(hubUrl,
+                options => options.AccessTokenProvider = ACCESS_TOKEN_PROVIDER).Build();
             _connection.Closed += OnConnectionClosed;
 
             _matchStateChangedSubscription = _connection.On<MatchSnapshot>("MatchStateChanged" , OnMatchStateChanged);
+            _opponentPreviewChangedSubscription = _connection.On<OpponentPreviewUpdate>("OpponentPreviewChanged" , OnOpponentPreviewChanged);
 
             try
             {
@@ -150,6 +163,107 @@ namespace DotsAndBoxes.Gameplay
                 await DisposeConnection_async();
                 throw;
             }
+        }
+
+        public async Task Ready_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotStarted();
+
+            if(_isReady)
+            {
+                return;
+            }
+
+            MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>("ReadyMatch", MatchId, cancellationToken);
+
+            if(snapshot == null)
+            {
+                throw new InvalidOperationException("Ready SnapShot을 받지 못함");
+            }
+
+            ReceiveSnapshot(snapshot);
+            _isReady = true;
+        }
+
+        public async Task<MatchSnapshot> Leave_async(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotStarted();
+
+            if ( _hasLeft )
+            {
+                return CurrentSnapshot;
+            }
+
+            MatchSnapshot snapshot = await _connection.InvokeAsync<MatchSnapshot>(
+        "LeaveMatch",
+        MatchId,
+        cancellationToken);
+
+            if ( snapshot == null )
+            {
+                throw new InvalidOperationException("LeaveMatch 응답 Snapshot이 없습니다.");
+            }
+
+            _hasLeft = true;
+            _isReady = false;
+
+            ReceiveSnapshot(snapshot);
+
+            return snapshot;
+        }
+
+        public async Task<MATCH_COMMAND_ERROR_ENUM> SetPreviewEdge_async(
+            int edgeId ,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotStarted();
+
+            if ( !HasSnapshot )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.INVALID_REQUEST;
+            }
+
+            MatchSnapshot snapshot = CurrentSnapshot;
+
+            if ( snapshot.MatchState != SERVER_MATCH_STATE_ENUM.ACTIVE )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.MATCH_NOT_ACTIVE;
+            }
+
+            if ( snapshot.CurrentPlayerIndex != LocalPlayerIndex )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.NOT_YOUR_TURN;
+            }
+
+            bool shouldClearPreview = edgeId == OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID;
+
+            if ( !shouldClearPreview && (edgeId < 0 || edgeId >= BoardTopology.EDGE_COUNT) )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.INVALID_EDGE;
+            }
+
+            if ( !shouldClearPreview && snapshot.EdgeOwners[ edgeId ] != PLAYER_INDEX_ENUM.NONE )
+            {
+                return MATCH_COMMAND_ERROR_ENUM.EDGE_ALREADY_CONFIRMED;
+            }
+
+            long previewSequence = Interlocked.Increment(ref _previewSequence);
+
+            PreviewEdgeRequest request = new PreviewEdgeRequest
+            {
+                MatchId = MatchId ,
+                EdgeId = edgeId ,
+                ExpectedRevision = snapshot.Revision ,
+                PreviewSequence = previewSequence
+            };
+
+            return await _connection.InvokeAsync<MATCH_COMMAND_ERROR_ENUM>(
+                "SetPreviewEdge" ,
+                request ,
+                cancellationToken);
         }
 
         public async Task<ConfirmEdgeResponse> ConfirmEdge_async(int edgeId , CancellationToken cancellationToken = default)
@@ -220,12 +334,22 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            _isReady = false;
+            _hasLeft = false;
+            
             PENDING_CONFIRM_REQUEST_STORE.Clear();
+
             SetConnectionState(GAME_SESSION_CONNECTION_STATE_ENUM.DISCONNECTED);
+            
             _isDisposed = true;
 
             SnapshotChanged = null;
             ConnectionStateChanged = null;
+            OpponentPreviewChanged = null;
+
+            _previewSequence = 0;
+            _lastOpponentPreviewRevision = -1;
+            _lastOpponentPreviewSequence = 0;
 
             _ = DisposeConnection_async();
         }
@@ -233,6 +357,11 @@ namespace DotsAndBoxes.Gameplay
         private void OnMatchStateChanged(MatchSnapshot snapshot)
         {
             ReceiveSnapshot(snapshot);
+        }
+
+        private void OnOpponentPreviewChanged(OpponentPreviewUpdate update)
+        {
+            ReceiveOpponentPreview(update);
         }
 
         private Task OnConnectionClosed(Exception exception)
@@ -243,6 +372,7 @@ namespace DotsAndBoxes.Gameplay
             }
 
             _isStarted = false;
+            _isReady = false;
             PENDING_CONFIRM_REQUEST_STORE.Clear();
 
             GAME_SESSION_CONNECTION_STATE_ENUM connectionState = exception == null
@@ -275,6 +405,28 @@ namespace DotsAndBoxes.Gameplay
             } , null);
         }
 
+        private void ReceiveOpponentPreview(OpponentPreviewUpdate update)
+        {
+            if ( _isDisposed || update == null )
+            {
+                return;
+            }
+
+            if ( SynchronizationContext.Current == _unitySynchronizationContext )
+            {
+                ApplyAndPublishOpponentPreview(update);
+                return;
+            }
+
+            _unitySynchronizationContext.Post(_ =>
+            {
+                if ( !_isDisposed )
+                {
+                    ApplyAndPublishOpponentPreview(update);
+                }
+            } , null);
+        }
+
         private void ApplyAndPublishSnapshot(MatchSnapshot snapshot)
         {
             if ( snapshot.MatchId != MatchId )
@@ -294,14 +446,72 @@ namespace DotsAndBoxes.Gameplay
 
             MatchSnapshot appliedSnapshot = SNAPSHOT_STORE.CurrentSnapshot;
 
+            _lastOpponentPreviewRevision = appliedSnapshot.Revision;
+            _lastOpponentPreviewSequence = 0;
+
             PENDING_CONFIRM_REQUEST_STORE.TryComplete(appliedSnapshot);
             SnapshotChanged?.Invoke(appliedSnapshot);
+        }
+
+        private void ApplyAndPublishOpponentPreview(OpponentPreviewUpdate update)
+        {
+            if ( update.MatchId != MatchId || !HasSnapshot )
+            {
+                return;
+            }
+
+            MatchSnapshot snapshot = CurrentSnapshot;
+
+            if ( update.Revision != snapshot.Revision )
+            {
+                return;
+            }
+
+            PLAYER_INDEX_ENUM opponentPlayerIndex = LocalPlayerIndex == PLAYER_INDEX_ENUM.PLAYER_ONE
+                ? PLAYER_INDEX_ENUM.PLAYER_TWO
+                : PLAYER_INDEX_ENUM.PLAYER_ONE;
+
+            if ( update.PlayerIndex != opponentPlayerIndex || update.PreviewSequence <= 0 )
+            {
+                return;
+            }
+
+            if ( update.HasPreview )
+            {
+                bool isValidEdge = update.EdgeId >= 0 && update.EdgeId < BoardTopology.EDGE_COUNT;
+
+                if ( !isValidEdge || snapshot.EdgeOwners[ update.EdgeId ] != PLAYER_INDEX_ENUM.NONE )
+                {
+                    return;
+                }
+            }
+            else if ( update.EdgeId != OpponentPreviewUpdate.NO_PREVIEW_EDGE_ID )
+            {
+                return;
+            }
+
+            bool isOlderUpdate =
+                _lastOpponentPreviewRevision > update.Revision ||
+                (_lastOpponentPreviewRevision == update.Revision &&
+                 _lastOpponentPreviewSequence >= update.PreviewSequence);
+
+            if ( isOlderUpdate )
+            {
+                return;
+            }
+
+            _lastOpponentPreviewRevision = update.Revision;
+            _lastOpponentPreviewSequence = update.PreviewSequence;
+            OpponentPreviewChanged?.Invoke(update);
         }
 
         private async Task DisposeConnection_async()
         {
             _matchStateChangedSubscription?.Dispose();
             _matchStateChangedSubscription = null;
+
+            _opponentPreviewChangedSubscription?.Dispose();
+            _opponentPreviewChangedSubscription = null;
 
             HubConnection connection = _connection;
             _connection = null;

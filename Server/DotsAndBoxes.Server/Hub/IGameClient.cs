@@ -6,5 +6,6 @@ namespace DotsAndBoxes.Server.Hubs
     {
         Task MatchFound(MatchAssignment assignment);
         Task MatchStateChanged(MatchSnapshot snapshot);
+        Task OpponentPreviewChanged(OpponentPreviewUpdate update);
     }
 }
