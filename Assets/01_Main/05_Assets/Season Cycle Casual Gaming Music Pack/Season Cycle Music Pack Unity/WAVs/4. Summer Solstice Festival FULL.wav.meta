@@ -1,0 +1,31 @@
+fileFormatVersion: 2
+guid: ce407e4b52f594546b8132b13a99a667
+AssetOrigin:
+  serializedVersion: 1
+  productId: 276412
+  packageName: 'Season Cycle: Casual Gaming Music Pack'
+  packageVersion: 1.0
+  assetPath: Assets/Scenes/Season Cycle Casual Gaming Music Pack/Season Cycle Music
+    Pack Unity/WAVs/4. Summer Solstice Festival FULL.wav
+  uploadId: 643502
+AudioImporter:
+  externalObjects: {}
+  serializedVersion: 8
+  defaultSettings:
+    serializedVersion: 2
+    loadType: 2
+    sampleRateSetting: 1
+    sampleRateOverride: 44100
+    compressionFormat: 1
+    quality: 0.5
+    conversionMode: 0
+    preloadAudioData: 0
+  platformSettingOverrides: {}
+  forceToMono: 0
+  normalize: 1
+  loadInBackground: 0
+  ambisonic: 0
+  3D: 1
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

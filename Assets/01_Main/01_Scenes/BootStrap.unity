@@ -238,27 +238,27 @@ PrefabInstance:
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[0]'
       value: 
-      objectReference: {fileID: 8300000, guid: 90b573eb8b0b9ea45985e8bd3f28a3fc, type: 3}
+      objectReference: {fileID: 8300000, guid: bb64b68cd7bb0442f8b4aa35eb50d69f, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[1]'
       value: 
-      objectReference: {fileID: 8300000, guid: 318f9b7e22d5dba4da1c3b126ba4cdd8, type: 3}
+      objectReference: {fileID: 8300000, guid: d09fa46398af0499b8e39053d5dfd238, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[2]'
       value: 
-      objectReference: {fileID: 8300000, guid: 8f9178e66a43c4943957460de450f5f5, type: 3}
+      objectReference: {fileID: 8300000, guid: 54674b2a832c944f099ef30fab22f4db, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[3]'
       value: 
-      objectReference: {fileID: 8300000, guid: af00c65dd353be84581bccf7ac166e0e, type: 3}
+      objectReference: {fileID: 8300000, guid: ce407e4b52f594546b8132b13a99a667, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[4]'
       value: 
-      objectReference: {fileID: 8300000, guid: c91b54bc49450d34da7b1845957afee5, type: 3}
+      objectReference: {fileID: 8300000, guid: 638a9def602be45bebdfc68da266e814, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[5]'
       value: 
-      objectReference: {fileID: 8300000, guid: 44c91ea9a87baa642b6736e86c5021d0, type: 3}
+      objectReference: {fileID: 8300000, guid: c8228f36acd524bd7bcbf18848568885, type: 3}
     - target: {fileID: 13616533510303630, guid: 4e95b1e259966c148a5525a2d0069684, type: 3}
       propertyPath: '_bgmClips.Array.data[6]'
       value: 
